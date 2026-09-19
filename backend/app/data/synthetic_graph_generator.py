@@ -16,11 +16,22 @@ import random
 
 import networkx as nx
 
+from app.core.geo import lat_lon_from_km
 from app.core.graph_model import TrafficGraph
 
 
 def _euclidean(a: tuple[float, float], b: tuple[float, float]) -> float:
     return math.dist(a, b)
+
+
+def georeference(graph: TrafficGraph, centre_lat: float, centre_lon: float) -> None:
+    """Give every node `lat`/`lon` for map display: `pos` (km) is treated as an
+    offset from the graph's centroid, which is placed at (centre_lat, centre_lon)."""
+    nodes = list(graph.graph.nodes(data=True))
+    cx = sum(attrs["pos"][0] for _, attrs in nodes) / len(nodes)
+    cy = sum(attrs["pos"][1] for _, attrs in nodes) / len(nodes)
+    for _, attrs in nodes:
+        attrs["lat"], attrs["lon"] = lat_lon_from_km(attrs["pos"][0] - cx, attrs["pos"][1] - cy, centre_lat, centre_lon)
 
 
 def generate_synthetic_graph(
