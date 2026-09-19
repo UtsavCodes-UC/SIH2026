@@ -21,7 +21,8 @@ def optimize(req: OptimizeRequest, store: GraphStore = Depends(get_store)) -> Op
     with stored.lock:  # edge weights must not change mid-solve
         request = resolve_problem(stored, req)
         solution = solve(
-            stored.graph, request, req.algorithm, req.n_particles, req.n_iterations, req.seed, req.polish
+            stored.graph, request, req.algorithm, req.n_particles, req.n_iterations, req.seed, req.polish,
+            warm_start=req.warm_start,
         )
         routes = split_at_depot(solution.final.best_route, request.depot)
         evaluation = solution.problem.evaluate_routes(routes)
@@ -42,6 +43,7 @@ def optimize(req: OptimizeRequest, store: GraphStore = Depends(get_store)) -> Op
         raw_cost=solution.raw.best_cost,
         cost=solution.final.best_cost,
         polished=solution.polished,
+        warm_start=req.warm_start and req.algorithm != "nearest_neighbor",
         convergence=solution.raw.convergence_history,
         runtime_sec=solution.final.runtime_sec,
         iterations=solution.raw.iterations,

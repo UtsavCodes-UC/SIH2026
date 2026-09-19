@@ -28,6 +28,8 @@ def benchmark(req: BenchmarkRequest, store: GraphStore = Depends(get_store)) -> 
             ga_generations=req.n_iterations,
             seed=req.seed,
             polish_with_two_opt=req.polish,
+            inter_route_polish=True,
+            warm_start=req.warm_start,
         )
         report = run_benchmark(stored.graph, request, config)
 
@@ -57,6 +59,7 @@ def benchmark(req: BenchmarkRequest, store: GraphStore = Depends(get_store)) -> 
             n_stops=report.n_stops,
             exact_cost=report.exact_cost,
             algorithms=algorithms,
+            warm_start=req.warm_start,
             warnings=problem_warnings(routing_problem),
             traffic=stored.traffic,
         )

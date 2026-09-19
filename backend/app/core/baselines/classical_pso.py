@@ -23,9 +23,10 @@ import time
 import numpy as np
 
 from app.core.graph_model import TrafficGraph
-from app.core.local_search import refine_positions_with_two_opt
+from app.core.local_search import encode_order, refine_positions_with_two_opt
 from app.core.types import OptimizationResult
 from app.core.vrp_formulation import RouteRequest, RoutingProblem
+from app.core.warm_start import heuristic_seed_orders
 
 
 class ClassicalPSO:
@@ -43,6 +44,7 @@ class ClassicalPSO:
         penalty_weight: float = 1000.0,
         memetic_interval: int | None = None,
         memetic_max_passes: int = 10,
+        warm_start: bool = False,
         seed: int | None = None,
     ):
         if memetic_interval and request.n_vehicles > 1:
@@ -60,6 +62,7 @@ class ClassicalPSO:
         self.penalty_weight = penalty_weight
         self.memetic_interval = memetic_interval
         self.memetic_max_passes = memetic_max_passes
+        self.warm_start = warm_start
         self.rng = np.random.default_rng(seed)
 
     def _decode(self, position: np.ndarray) -> list:
@@ -76,6 +79,9 @@ class ClassicalPSO:
         start = time.perf_counter()
 
         positions = self.rng.random((self.n_particles, self.n))
+        if self.warm_start:  # same seeds as QPSO gets: the comparison stays fair
+            for i, order in enumerate(heuristic_seed_orders(self.problem)[: self.n_particles]):
+                positions[i] = encode_order(order, self.stops)
         velocities = self.rng.uniform(-self.v_max, self.v_max, (self.n_particles, self.n))
 
         pbest = positions.copy()

@@ -30,8 +30,18 @@ hybrid advantage is small and mostly not significant.**
 **The caveat that matters most.** With several vehicles and capacity
 constraints the raw edge holds at about 20 customers (+10.6%, p = 0.0002), is a
 statistical tie at 50 (+3.7% to -4.2% depending on PSO settings and fleet
-tightness, p >= 0.41), and reverses at 100 (PSO wins 15-20 of 20). So "scales
-to large instances" is not a supported claim yet (Finding 9).
+tightness, p >= 0.41), and reverses at 100 (PSO wins 15-20 of 20) (Finding 9).
+Finding 10 investigated this. A jump size that shrinks with problem size
+restores QPSO's raw lead over classical PSO at 100 customers (+12.4%, 19 of 20).
+But a permutation GA is far stronger than either swarm from a random start (raw
+25% / 35% lower cost at 50 / 100 customers), and what really makes 100 customers
+work is the pipeline around the search: **warm start + moving stops between
+vehicles** cut the app's default cost by 23% / 40% at 50 / 100 customers. Once
+everything is warm-started, QPSO, PSO and GA end within about 1% of each other at
+50-100 customers, and QPSO is 0.4% (not significant) ahead of plain
+nearest-neighbour + polish at 100. Do not claim QPSO beats GA or scales better
+than other methods; the supported claim is QPSO's edge over classical PSO at
+about 20 customers, and a hybrid pipeline that handles 100.
 
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
@@ -205,8 +215,122 @@ multi-vehicle instances at about 20 customers. Supporting 50-100 customers means
 either closing this gap (per-dimension jump scaling or another encoding at high
 dimension, retuning beta at 100 customers, a per-route local search that both
 algorithms get) or presenting QPSO honestly as competitive rather than dominant
-at that scale and benchmarking against stronger baselines (GA, OR-Tools). This
-is the Day-3 work item.
+at that scale and benchmarking against stronger baselines (GA, OR-Tools).
+Finding 10 is that work.
+
+## Finding 10 — scaling to 50-100 customers: a smaller jump, a warm start, and a stronger polish
+
+Finding 9 left QPSO losing to classical PSO at 100 customers, with two untested
+hypotheses. This tests them (`scripts/scale_experiments.py`, parallel, one CSV per
+size in `backend/results/scaling/`). Setup as in Finding 9: random capacitated
+instances, demands 5-25, capacity 100, fleet sized for at most 85% utilization,
+**20 instances per size (seeds 500-519)**, 40 particles x 800 iterations, one
+algorithm seed, pinned environment. "Polish" below is the new full polish
+(`improve_routes`, point 4); "2-opt only" is the old per-route polish. Cells are
+win / tie / loss with the mean improvement (positive = first is better) and a
+one-sided exact sign test.
+
+**1. Hypothesis 1 was right: QPSO's jump is too big at 100 dimensions.** A particle
+is 100 random keys whose sort order is the tour. QPSO's jump is proportional to the
+swarm's spread (about 0.25 per key at the start), which reorders most of a
+100-stop tour on every step, so early on it behaves like random sampling; PSO's
+velocity-limited steps refine instead. Shrinking the jump flips the result
+(100 customers, first 10 instances, raw cost, QPSO vs classical PSO):
+
+| beta start -> end | 1.0 -> 0.2 (old default) | 0.5 -> 0.1 | 0.3 -> 0.05 | 0.15 -> 0.02 | 0.05 -> 0.01 |
+|---|---|---|---|---|---|
+| win/loss, improvement | 2/8, -11.3% | **9/1, +11.0% (p=0.011)** | 8/2, +6.0% | 8/2, +4.9% | 5/5, -0.5% |
+
+The best jump shrinks with size (20 customers: the old default is best, +10.5%,
+and every smaller one is worse; 50: 1.0 and 0.5 tie). So the default is now
+`beta = (1.0, 0.2) * min(1, 50 / stops)`. **Up to 50 stops this is bit-identical to
+before** (20 of 20 ties at both 20 and 50 customers), so every earlier result stands.
+At 100 customers, QPSO vs PSO raw goes from **5 wins / 15 losses (-8.0%)**, which
+reproduces Finding 9, to **19 wins / 1 loss (+12.4%, p < 0.0001)**.
+
+**2. But a random start is the bigger problem: at 50-100 customers the swarms lose
+to a trivial heuristic, and to a GA by a lot.** Mean cost, raw (no local search):
+
+| customers | nearest neighbour | PSO | QPSO | GA |
+|---|---|---|---|---|
+| 20 | 1,032 | 950 | 852 | 864 |
+| 50 | 2,106 | 2,659 | 2,548 | **2,035** |
+| 100 | 3,634 | 6,554 | 5,707 | **4,237** |
+
+Random-key swarms need the tour to be globally coherent, which a 100-dimensional
+random search does not find in 32,000 evaluations. QPSO cold is 25% (50) and 35%
+(100) worse than the cold GA, in every one of 20 instances (0 wins). More budget
+does not fix it (3x the iterations changed the warm-started results by under 1%).
+
+**3. Warm start fixes most of it.** `app/core/warm_start.py` puts two particles in
+the population from the start: the nearest-neighbour solution and the same after
+2-opt. The rest stay random. The same seeds go to PSO, GA and QPSO, so the
+comparison stays fair. QPSO raw cost falls **25% at 50 customers (2,548 -> 1,898) and
+39% at 100 (5,707 -> 3,479)**. Both seeds decode back to exactly their own routes
+(tested), so the seed is a real member of the population.
+
+**4. A stronger polish: moving stops between vehicles.** The old polish only
+reorders stops inside each vehicle's route. `improve_routes` also relocates runs of
+1-3 stops from one vehicle to another and swaps stops between vehicles, accepting a
+move only if it lowers travel time plus the overload penalty. Every cost change is
+exact for our directed, per-direction congestion because none of these moves reverses
+a stretch of road (tested: on random asymmetric instances no move ever made a plan
+worse). On nearest neighbour + 2-opt it lowers cost by 18% / 12% / 10% at 20 / 50 /
+100 customers, in at most 0.14 s.
+
+**5. What is left between the algorithms once everything is warm-started.** Mean
+cost after the full polish:
+
+| customers | nearest neighbour + polish | PSO warm | QPSO warm | GA warm |
+|---|---|---|---|---|
+| 20 | 846 | 822 | **800** | 826 |
+| 50 | 1,800 | **1,751** | 1,761 | 1,759 |
+| 100 | 3,201 | 3,181 | 3,187 | **3,148** |
+
+| QPSO warm vs ... | 20 customers | 50 customers | 100 customers |
+|---|---|---|---|
+| PSO warm, raw | 11/7/2, +1.9%, p=0.011 | 10/1/9, +0.7%, p=0.50 | 4/0/16, -0.7% (PSO better, p=0.006) |
+| PSO warm, polished | **10/10/0, +2.8%, p=0.001** | 8/1/11, -0.6%, p=0.82 | 9/0/11, -0.2%, p=0.75 |
+| GA warm, polished | 11/5/4, +3.2%, p=0.059 | 9/1/10, -0.4%, p=0.68 | 4/1/15, -1.2% (GA better, p=0.010) |
+| nearest neighbour + polish | 15/3/2, +4.9%, p=0.001 | 14/1/5, +1.9%, p=0.032 | 8/9/3, +0.4%, p=0.11 |
+
+**What this supports, and what it does not.**
+
+- QPSO's edge over classical PSO is real and robust at about 20 customers, cold
+  (raw +10.5%, 18 of 20) and warm-started and polished (+2.8%, 10 wins, 0 losses).
+- At 50 customers QPSO, PSO and GA are indistinguishable once warm-started; all
+  are about 2% better than nearest neighbour + polish.
+- At 100 customers the pipeline does the work. QPSO is 0.4% better than nearest
+  neighbour + polish (not significant), and 1.2% *worse* than the warm GA after the
+  polish (1.3% worse raw, 2 wins of 20, p = 0.0002 for GA). The
+  claim "QPSO scales better than other metaheuristics" is **not supported**.
+- What did change is the app itself. Its default result (cold QPSO, old jump,
+  2-opt-only polish before; warm QPSO, size-aware jump, full polish now) is
+  **5.4% lower at 20 customers (15 wins, 4 losses, p = 0.01), 22.8% lower at 50
+  (20 wins, 0 losses) and 40.4% lower at 100 (5,346 -> 3,187; 20 wins, 0 losses).**
+- Turning warm start off keeps the algorithm comparisons of Findings 7-9 exactly
+  as published, and is the right setting to show the algorithms competing.
+
+**Also changed.** The genetic algorithm's crossover now uses a vectorized fill
+instead of a slow membership test, with exactly the same children (checked against
+the original on 300 random cases): a 100-customer GA run fell from about 41 s to
+5 s, which is what makes a 100-stop benchmark in the UI usable.
+
+**Caveats.** 20 instances per size, one algorithm seed, synthetic graphs,
+one specific pair of seeds (nearest neighbour and its 2-opt). The `s/run` column in
+the harness is inflated by running 10 processes at once. One real check on MG Road,
+Bengaluru (871 intersections, 100 stops, 16-17 vehicles, one instance): QPSO cold
+285.0 -> warm 176.2 raw, 155.9 after the polish, the same as nearest neighbour +
+polish there; a single instance says nothing about averages (cold + polish happened
+to reach 151.8 on it).
+
+Reproduce (from `backend/`; `qpso_b1.0_0.2` is the old fixed schedule):
+
+```
+python scripts/scale_experiments.py --customers 100 --instances 20 --polish full --variants qpso_b1.0_0.2 qpso ga pso_warm qpso_warm ga_warm --csv results/scaling/scaling_100customers.csv
+python scripts/scale_experiments.py --customers 100 --instances 10 --variants qpso_b1.0_0.2 qpso_b0.5_0.1 qpso_b0.3_0.05 qpso_b0.15_0.02 qpso_b0.05_0.01
+python scripts/scale_experiments.py --list
+```
 
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)
 

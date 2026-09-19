@@ -7,6 +7,7 @@ export interface SolverParams {
   nParticles: number;
   nIterations: number;
   polish: boolean;
+  warmStart: boolean;
   seed: number;
 }
 
@@ -17,6 +18,7 @@ export const DEFAULT_PARAMS: SolverParams = {
   nParticles: 40,
   nIterations: 800,
   polish: true,
+  warmStart: true,
   seed: 1,
 };
 

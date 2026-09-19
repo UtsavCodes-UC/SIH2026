@@ -52,7 +52,7 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
         </div>
         {gain !== null && (
           <div className="kpi">
-            <span>2-opt polish saved</span>
+            <span>Polish saved</span>
             <strong>{fmt(gain)}%</strong>
           </div>
         )}
@@ -103,7 +103,7 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
           ) : (
             <p className="empty">{ALGORITHM_LABELS[result.algorithm]} builds its answer in one pass, so there is no convergence curve.</p>
           )}
-          <p className="hint">Cost = travel time in minutes plus a heavy penalty for any capacity overload. The curve is the algorithm's own result, before the 2-opt polish.</p>
+          <p className="hint">Cost = travel time in minutes plus a heavy penalty for any capacity overload. The curve is the algorithm's own result, before the polish{result.warm_start ? "; it starts from a nearest-neighbour route, so it begins low" : ""}.</p>
         </div>
       </div>
     </div>

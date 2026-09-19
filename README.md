@@ -7,8 +7,12 @@ exact solver. Includes a REST API and a map UI, on synthetic networks or real Op
 
 **Read [docs/BENCHMARKS.md](docs/BENCHMARKS.md) before quoting any performance number.** In short:
 QPSO is a much stronger optimizer than classical PSO on its own (13-28% cheaper routes, p < 0.02),
-but once both get a 2-opt local search the gap shrinks to +0.5-3.6% and is mostly not significant, and
-with several vehicles the edge holds at ~20 customers, ties at 50 and reverses at 100.
+but once both get a 2-opt local search the gap shrinks to +0.5-3.6% and is mostly not significant. With
+several vehicles QPSO's edge over PSO holds at ~20 customers and ties at 50; at 100 a jump size that
+shrinks with problem size wins it back against a random-start PSO, but a genetic algorithm is stronger
+than either from a random start, and what really makes 100 customers work is the pipeline around the
+search: a warm start from a nearest-neighbour route plus a polish that moves stops between vans (40%
+lower cost at 100 customers than before; Finding 10). Do not read this as "QPSO scales best".
 
 ## Run it
 
@@ -49,7 +53,10 @@ cd backend && python scripts/warm_city_cache.py
    set the fleet size (blank = auto) and vehicle capacity.
 3. **Solver** — pick QPSO / PSO / GA / nearest neighbour and press *Optimize routes*: routes are drawn
    along the roads, numbered by visiting order, with per-vehicle load, time and distance and the
-   search's convergence curve. *Benchmark* runs every algorithm on the same problem.
+   search's convergence curve. *Benchmark* runs every algorithm on the same problem. Two options are on
+   by default: *Warm start* (the search begins with a nearest-neighbour route in its population; needed
+   from about 50 stops, and switch it off to watch the algorithms compete from scratch) and *Polish
+   routes* (2-opt inside each route, then moving stops between vans). Up to 150 stops.
 4. **Traffic** — free flow / random / rush hour repaints the roads and (optionally) re-plans
    automatically, so you can watch routes detour around a jam. On a real city, *Fetch live traffic*
    loads real TomTom readings instead (see below). A badge on the map and on every result always says
@@ -133,6 +140,8 @@ docs/              BENCHMARKS.md (results and caveats)
 
 ## Status
 
-Day 1 (engine, baselines, benchmarking) and Day 2 (multi-vehicle capacity model, REST API, OSM
-loader, map UI, live TomTom traffic with recorded snapshots) are done. Open for Day 3: closing QPSO's gap at 50-100 customers, time windows,
-mathematical-formulation write-up, packaging (Docker) and demo polish.
+Day 1 (engine, baselines, benchmarking), Day 2 (multi-vehicle capacity model, REST API, OSM loader,
+map UI, live TomTom traffic with recorded snapshots) and the first part of Day 3 (scaling to 100
+customers: warm start, a size-aware QPSO jump, a polish that moves stops between vans) are done.
+Still open for Day 3: the mathematical-formulation write-up, "block a road" what-if events, a
+time / distance / fuel cost model, Docker packaging and the demo script.

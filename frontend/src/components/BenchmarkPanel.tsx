@@ -37,7 +37,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
                 <th className="num" title="travel time of the raw result, without the penalty">Travel (min)</th>
                 <th className="num" title="total capacity overload of the raw result">Overload</th>
                 {hasGaps && <th className="num">Gap to optimum</th>}
-                <th className="num" title="the same result after a 2-opt polish of each route">+ 2-opt cost</th>
+                <th className="num" title="the same result after the polish: 2-opt inside each route, then moving stops between vans">+ Polish cost</th>
                 {hasGaps && <th className="num">Gap</th>}
                 <th className="num">Time (s)</th>
               </tr>
@@ -63,8 +63,10 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
           <p className="hint">
             {benchmark.n_stops} stops, {benchmark.problem.n_vehicles} vehicle{benchmark.problem.n_vehicles === 1 ? "" : "s"}.
             {benchmark.exact_cost === null ? " No exact optimum is computed for multi-vehicle or larger problems." : ` Exact optimum: ${fmt(benchmark.exact_cost)}.`} Lower is better. The
-            raw column is the like-for-like algorithm comparison; a 2-opt polish helps every method and narrows the differences. One problem instance is
-            an illustration, not a statistical result.
+            raw column is the like-for-like algorithm comparison; the polish helps every method and narrows the differences.
+            {benchmark.warm_start
+              ? " Warm start is on: every search begins with the same nearest-neighbour route, which is fair but shrinks the gaps between them; turn it off to compare them from scratch."
+              : " Warm start is off: every search begins from random routes."}{" "}One problem instance is an illustration, not a statistical result.
           </p>
         </div>
 
@@ -77,7 +79,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
             />
           </div>
           <div className="chart-card">
-            <h3>Final cost: raw vs +2-opt</h3>
+            <h3>Final cost: raw vs + polish</h3>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={barData} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e3e7ec" vertical={false} />
@@ -86,7 +88,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
                 <Tooltip formatter={(v: number) => fmt(v, 1)} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="raw" name="raw" fill="#d1495b" isAnimationActive={false} />
-                <Bar dataKey="polished" name="+ 2-opt" fill="#2e6f95" isAnimationActive={false} />
+                <Bar dataKey="polished" name="+ polish" fill="#2e6f95" isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
           </div>

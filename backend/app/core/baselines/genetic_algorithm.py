@@ -20,6 +20,7 @@ import numpy as np
 from app.core.graph_model import TrafficGraph
 from app.core.types import OptimizationResult
 from app.core.vrp_formulation import RouteRequest, RoutingProblem
+from app.core.warm_start import heuristic_seed_orders
 
 
 class GeneticAlgorithm:
@@ -32,6 +33,7 @@ class GeneticAlgorithm:
         tournament_size: int = 3,
         mutation_rate: float = 0.15,
         penalty_weight: float = 1000.0,
+        warm_start: bool = False,
         seed: int | None = None,
     ):
         self.problem = RoutingProblem(graph, request)
@@ -42,6 +44,7 @@ class GeneticAlgorithm:
         self.tournament_size = tournament_size
         self.mutation_rate = mutation_rate
         self.penalty_weight = penalty_weight
+        self.warm_start = warm_start
         self.rng = np.random.default_rng(seed)
 
     def _fitness(self, individual: np.ndarray) -> float:
@@ -59,10 +62,10 @@ class GeneticAlgorithm:
         child = np.full(n, -1, dtype=int)
         child[i : j + 1] = parent_a[i : j + 1]
 
-        fill_values = [gene for gene in parent_b if gene not in child[i : j + 1]]
-        fill_positions = [p for p in range(n) if child[p] == -1]
-        for pos, value in zip(fill_positions, fill_values):
-            child[pos] = value
+        # the genes of parent B not already taken, in B's order, fill the free slots left to right
+        taken = np.zeros(n, dtype=bool)
+        taken[parent_a[i : j + 1]] = True
+        child[child == -1] = parent_b[~taken[parent_b]]
         return child
 
     def _mutate(self, individual: np.ndarray) -> np.ndarray:
@@ -77,6 +80,10 @@ class GeneticAlgorithm:
         population = np.array(
             [self.rng.permutation(self.n) for _ in range(self.population_size)]
         )
+        if self.warm_start:  # same seeds as QPSO and PSO get (core/warm_start.py): the comparison stays fair
+            index_of = {stop: i for i, stop in enumerate(self.stops)}
+            for i, order in enumerate(heuristic_seed_orders(self.problem)[: self.population_size]):
+                population[i] = [index_of[stop] for stop in order]
         fitness = np.array([self._fitness(ind) for ind in population])
 
         best_idx = int(np.argmin(fitness))

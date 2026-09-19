@@ -120,7 +120,7 @@ export default function App() {
   async function doOptimize() {
     if (!ready) return;
     const out = await run("optimize", () =>
-      optimize({ ...problemBody(), algorithm: params.algorithm, n_particles: params.nParticles, n_iterations: params.nIterations, polish: params.polish }),
+      optimize({ ...problemBody(), algorithm: params.algorithm, n_particles: params.nParticles, n_iterations: params.nIterations, polish: params.polish, warm_start: params.warmStart }),
     );
     if (out) {
       setResult(out);
@@ -132,7 +132,7 @@ export default function App() {
   async function doBenchmark() {
     if (!ready) return;
     const out = await run("benchmark", () =>
-      runBenchmark({ ...problemBody(), n_particles: params.nParticles, n_iterations: params.nIterations, polish: params.polish }),
+      runBenchmark({ ...problemBody(), n_particles: params.nParticles, n_iterations: params.nIterations, polish: params.polish, warm_start: params.warmStart }),
     );
     if (out) {
       setBenchmark(out);

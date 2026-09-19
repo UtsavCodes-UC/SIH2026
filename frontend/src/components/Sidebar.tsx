@@ -173,7 +173,7 @@ export default function Sidebar(props: Props) {
           Depot: <strong>{depot ?? "—"}</strong> · Stops: <strong>{stops.length}</strong>. Use the map toolbar to click a depot or stops, or draw a random set.
         </p>
         <div className="row">
-          <label className="grow">Random stops{numberInput(props.nStops, props.onNStops, 1, 80)}</label>
+          <label className="grow">Random stops{numberInput(props.nStops, props.onNStops, 1, 150)}</label>
           <button className="btn btn-secondary" disabled={!idle || !graph} onClick={props.onRandomStops}>
             Draw
           </button>
@@ -215,9 +215,15 @@ export default function Sidebar(props: Props) {
           <label>Iterations{numberInput(params.nIterations, (n) => onParams({ nIterations: n }), 10, 3000, 50)}</label>
           <label>Seed{numberInput(params.seed, (n) => onParams({ seed: n }), 0, 9999)}</label>
         </div>
-        <label className="check">
-          <input type="checkbox" checked={params.polish} onChange={(e) => onParams({ polish: e.target.checked })} />2-opt polish on each route
+        <label className="check" title="Start the search with a nearest-neighbour route in its population. A random start cannot find good routes for 50+ stops; without this a large problem comes out far worse than a simple heuristic.">
+          <input type="checkbox" checked={params.warmStart} onChange={(e) => onParams({ warmStart: e.target.checked })} />Warm start from a good route
         </label>
+        <label className="check" title="After the search: fix crossing roads inside each route (2-opt), then move stops from one van to another whenever that saves time.">
+          <input type="checkbox" checked={params.polish} onChange={(e) => onParams({ polish: e.target.checked })} />Polish routes (2-opt + move stops between vans)
+        </label>
+        {params.warmStart && stops.length > 0 && stops.length <= 20 && (
+          <p className="hint">Tip: with few stops, turn warm start off to see the algorithms compete from scratch (that is where QPSO's edge shows).</p>
+        )}
         <div className="row">
           <button className="btn grow" disabled={!idle || !ready} onClick={props.onOptimize}>
             {busy === "optimize" ? "Optimizing…" : "Optimize routes"}

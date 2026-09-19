@@ -28,13 +28,19 @@ class OptimizeRequest(ProblemSpec):
     algorithm: Algorithm = "qpso"
     n_particles: int = Field(40, ge=5, le=200, description="swarm size (GA: population size)")
     n_iterations: int = Field(800, ge=10, le=3000, description="iterations (GA: generations)")
-    polish: bool = Field(True, description="apply a 2-opt polish to each vehicle's route")
+    polish: bool = Field(True, description="polish the result: 2-opt inside each route, then move stops between vehicles")
+    warm_start: bool = Field(
+        True,
+        description="PSO, GA and QPSO begin with the nearest-neighbour solution in their population. Essential from "
+        "about 50 stops, where a random start loses to nearest neighbour itself; turn it off to compare the algorithms from scratch",
+    )
 
 
 class BenchmarkRequest(ProblemSpec):
     n_particles: int = Field(40, ge=5, le=200)
     n_iterations: int = Field(800, ge=10, le=3000)
     polish: bool = True
+    warm_start: bool = Field(True, description="every metaheuristic starts from the same nearest-neighbour seed (fair; differences shrink)")
 
 
 class RouteOut(BaseModel):
@@ -66,6 +72,7 @@ class OptimizeResponse(BaseModel):
     raw_cost: float  # the algorithm's own result, before the polish
     cost: float  # final cost (after the polish when `polished`)
     polished: bool
+    warm_start: bool  # the swarm began with the nearest-neighbour solution in it
     convergence: list[float]  # best raw cost per iteration
     runtime_sec: float
     iterations: int
@@ -93,5 +100,6 @@ class BenchmarkResponse(BaseModel):
     n_stops: int
     exact_cost: float | None
     algorithms: list[BenchmarkAlgorithmOut]
+    warm_start: bool
     warnings: list[str] = []
     traffic: TrafficInfo

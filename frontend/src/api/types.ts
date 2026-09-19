@@ -88,12 +88,14 @@ export interface OptimizeRequest extends ProblemSpec {
   n_particles: number;
   n_iterations: number;
   polish: boolean;
+  warm_start: boolean;
 }
 
 export interface BenchmarkRequest extends ProblemSpec {
   n_particles: number;
   n_iterations: number;
   polish: boolean;
+  warm_start: boolean;
 }
 
 export interface RouteOut {
@@ -125,6 +127,7 @@ export interface OptimizeResponse {
   raw_cost: number;
   cost: number;
   polished: boolean;
+  warm_start: boolean; // the search began with a nearest-neighbour route in its population
   convergence: number[];
   runtime_sec: number;
   iterations: number;
@@ -152,6 +155,7 @@ export interface BenchmarkResponse {
   n_stops: number;
   exact_cost: number | null;
   algorithms: BenchmarkAlgorithm[];
+  warm_start: boolean;
   warnings: string[];
   traffic: TrafficInfo;
 }

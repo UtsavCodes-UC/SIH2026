@@ -18,7 +18,7 @@ from app.core.vrp_formulation import RouteRequest, RoutingProblem
 class Solution:
     problem: RoutingProblem
     raw: OptimizationResult  # the algorithm's own output
-    final: OptimizationResult  # after the optional 2-opt polish (the same object as `raw` if not polished)
+    final: OptimizationResult  # after the optional route polish (the same object as `raw` if not polished)
 
     @property
     def polished(self) -> bool:
@@ -34,19 +34,20 @@ def solve(
     seed: int | None,
     polish: bool,
     penalty_weight: float = 1000.0,
+    warm_start: bool = False,
 ) -> Solution:
     problem = RoutingProblem(graph, request)  # validates reachability up front
 
     if algorithm == "qpso":
-        raw = QPSO(graph, request, n_particles=n_particles, n_iterations=n_iterations, penalty_weight=penalty_weight, seed=seed).run()
+        raw = QPSO(graph, request, n_particles=n_particles, n_iterations=n_iterations, penalty_weight=penalty_weight, warm_start=warm_start, seed=seed).run()
     elif algorithm == "pso":
-        raw = ClassicalPSO(graph, request, n_particles=n_particles, n_iterations=n_iterations, penalty_weight=penalty_weight, seed=seed).run()
+        raw = ClassicalPSO(graph, request, n_particles=n_particles, n_iterations=n_iterations, penalty_weight=penalty_weight, warm_start=warm_start, seed=seed).run()
     elif algorithm == "ga":
-        raw = GeneticAlgorithm(graph, request, population_size=n_particles, n_generations=n_iterations, penalty_weight=penalty_weight, seed=seed).run()
+        raw = GeneticAlgorithm(graph, request, population_size=n_particles, n_generations=n_iterations, penalty_weight=penalty_weight, warm_start=warm_start, seed=seed).run()
     elif algorithm == "nearest_neighbor":
         raw = nearest_neighbor(graph, request)
     else:
         raise ValueError(f"unknown algorithm {algorithm!r}")
 
-    final = polish_result(problem, raw, penalty_weight) if polish else raw
+    final = polish_result(problem, raw, penalty_weight, inter_route=True) if polish else raw
     return Solution(problem=problem, raw=raw, final=final)

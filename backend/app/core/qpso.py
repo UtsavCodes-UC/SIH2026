@@ -20,6 +20,11 @@ random-key encoding — argsort the vector to get a permutation of `stops`.
 This lets a continuous-update algorithm like QPSO solve a discrete
 permutation problem without a custom discrete update rule.
 
+Beyond `JUMP_REFERENCE_DIMENSION` (50) stops the default beta shrinks in proportion, min(1, 50/n): the
+jump is proportional to the swarm's spread, so with 100 random keys the default reorders the decoded tour
+far more than it refines it, and QPSO loses to classical PSO (-11%, 2 wins of 10) where beta 0.5 -> 0.1
+wins 9 of 10 (+11%). Up to 50 stops nothing changes. See docs/BENCHMARKS.md, Finding 10.
+
 Defaults (n_particles=40, n_iterations=800, beta=(1.0, 0.2)) come from a
 hyperparameter sweep + validation against classical PSO (both polished with
 core/local_search.two_opt) — see scripts/tune_qpso.py. Below ~400 iterations
@@ -71,9 +76,13 @@ import time
 import numpy as np
 
 from app.core.graph_model import TrafficGraph
-from app.core.local_search import refine_positions_with_two_opt
+from app.core.local_search import encode_order, refine_positions_with_two_opt
 from app.core.types import OptimizationResult
 from app.core.vrp_formulation import RouteRequest, RoutingProblem
+from app.core.warm_start import heuristic_seed_orders
+
+
+JUMP_REFERENCE_DIMENSION = 50  # up to this many stops the annealing schedule below is the validated (1.0 -> 0.2)
 
 
 class QPSO:
@@ -83,8 +92,8 @@ class QPSO:
         request: RouteRequest,
         n_particles: int = 40,
         n_iterations: int = 800,
-        beta_start: float = 1.0,
-        beta_end: float = 0.2,
+        beta_start: float | None = None,  # None: 1.0, scaled down beyond JUMP_REFERENCE_DIMENSION stops
+        beta_end: float | None = None,  # None: 0.2, scaled the same way
         penalty_weight: float = 1000.0,
         memetic_interval: int | None = None,
         memetic_max_passes: int = 10,
@@ -92,6 +101,7 @@ class QPSO:
         stagnation_limit: int | None = None,
         reinjection_fraction: float = 0.25,
         adaptive_beta: bool = False,
+        warm_start: bool = False,
         seed: int | None = None,
     ):
         if memetic_interval and request.n_vehicles > 1:
@@ -101,8 +111,9 @@ class QPSO:
         self.n = len(self.stops)
         self.n_particles = n_particles
         self.n_iterations = n_iterations
-        self.beta_start = beta_start
-        self.beta_end = beta_end
+        jump_scale = min(1.0, JUMP_REFERENCE_DIMENSION / self.n)
+        self.beta_start = 1.0 * jump_scale if beta_start is None else beta_start
+        self.beta_end = 0.2 * jump_scale if beta_end is None else beta_end
         self.penalty_weight = penalty_weight
         self.memetic_interval = memetic_interval
         self.memetic_max_passes = memetic_max_passes
@@ -110,6 +121,7 @@ class QPSO:
         self.stagnation_limit = stagnation_limit
         self.reinjection_fraction = reinjection_fraction
         self.adaptive_beta = adaptive_beta
+        self.warm_start = warm_start
         self.rng = np.random.default_rng(seed)
 
     def _decode(self, position: np.ndarray) -> list:
@@ -174,6 +186,9 @@ class QPSO:
         start = time.perf_counter()
 
         positions = self.rng.random((self.n_particles, self.n))
+        if self.warm_start:  # see core/warm_start.py: two particles begin as good solutions, the rest stay random
+            for i, order in enumerate(heuristic_seed_orders(self.problem)[: self.n_particles]):
+                positions[i] = encode_order(order, self.stops)
         pbest = positions.copy()
         pbest_fit = self._fitness_batch(positions)
 

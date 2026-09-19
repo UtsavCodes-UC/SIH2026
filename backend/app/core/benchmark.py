@@ -62,6 +62,8 @@ class BenchmarkConfig:
     seed: int | None = None
     include_exact: bool = True  # auto-skipped once stop count exceeds MAX_STOPS_FOR_EXACT
     polish_with_two_opt: bool = True  # applied uniformly to every non-exact algorithm, alongside the raw result
+    inter_route_polish: bool = False  # the polish also moves stops between vehicles (off: 2-opt inside each route only)
+    warm_start: bool = False  # PSO, GA and QPSO begin with the nearest-neighbour solution in the swarm (core/warm_start.py)
 
 
 # --------------------------------------------------------------------------
@@ -135,6 +137,7 @@ def run_benchmark(
                 n_particles=config.n_particles,
                 n_iterations=config.n_iterations,
                 penalty_weight=config.penalty_weight,
+                warm_start=config.warm_start,
                 seed=config.seed,
             ).run(),
         ),
@@ -146,6 +149,7 @@ def run_benchmark(
                 population_size=config.ga_population_size,
                 n_generations=config.ga_generations,
                 penalty_weight=config.penalty_weight,
+                warm_start=config.warm_start,
                 seed=config.seed,
             ).run(),
         ),
@@ -157,6 +161,7 @@ def run_benchmark(
                 n_particles=config.n_particles,
                 n_iterations=config.n_iterations,
                 penalty_weight=config.penalty_weight,
+                warm_start=config.warm_start,
                 seed=config.seed,
             ).run(),
         ),
@@ -173,7 +178,7 @@ def run_benchmark(
     for name, raw_result in runs:
         result = raw_result
         if config.polish_with_two_opt and name != "held_karp_exact":
-            result = polish_result(problem, raw_result, config.penalty_weight)
+            result = polish_result(problem, raw_result, config.penalty_weight, inter_route=config.inter_route_polish)
 
         algorithms.append(
             AlgorithmBenchmark(

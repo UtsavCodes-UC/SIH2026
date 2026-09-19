@@ -117,6 +117,11 @@ class RoutingProblem:
     def leg_time(self, u, v) -> float:
         return self._leg_time[u][v]
 
+    @property
+    def legs(self) -> dict:
+        """The whole shortest-time table, legs[u][v] in minutes, for hot loops that can't afford a call per lookup."""
+        return self._leg_time
+
     # ---- decoding -----------------------------------------------------------
 
     def split(self, stop_order: Sequence) -> list[list]:

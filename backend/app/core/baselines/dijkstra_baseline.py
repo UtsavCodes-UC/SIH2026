@@ -22,10 +22,9 @@ from app.core.types import OptimizationResult
 from app.core.vrp_formulation import RouteRequest, RoutingProblem
 
 
-def nearest_neighbor(graph: TrafficGraph, request: RouteRequest) -> OptimizationResult:
-    start = time.perf_counter()
-    problem = RoutingProblem(graph, request)
-
+def nearest_neighbor_order(problem: RoutingProblem) -> list:
+    """The stops in nearest-neighbour visiting order (routes decode back out of it with `problem.split`)."""
+    request = problem.request
     remaining = list(dict.fromkeys(request.stops))
     order: list = []
     current = request.depot
@@ -46,6 +45,13 @@ def nearest_neighbor(graph: TrafficGraph, request: RouteRequest) -> Optimization
         current = next_stop
         if request.n_vehicles > 1:
             load += request.demands.get(next_stop, 0)
+    return order
+
+
+def nearest_neighbor(graph: TrafficGraph, request: RouteRequest) -> OptimizationResult:
+    start = time.perf_counter()
+    problem = RoutingProblem(graph, request)
+    order = nearest_neighbor_order(problem)
 
     evaluation = problem.evaluate(order)
     cost = evaluation.total_time_min + 1000.0 * evaluation.capacity_violation
