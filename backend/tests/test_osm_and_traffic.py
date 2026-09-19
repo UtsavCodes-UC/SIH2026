@@ -109,6 +109,7 @@ def test_geocode_remembers_answers_on_disk_so_a_typed_place_works_offline_later(
     from app.data import osm_loader
 
     monkeypatch.setattr(osm_loader, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr("osmnx.settings.cache_folder", "unchanged")  # pytest restores the real value afterwards
     asked = []
 
     def nominatim(query):
@@ -120,6 +121,10 @@ def test_geocode_remembers_answers_on_disk_so_a_typed_place_works_offline_later(
     assert osm_loader.geocode("Koramangala, Bengaluru") == (12.9352, 77.6245)
     assert osm_loader.geocode("  koramangala,   BENGALURU ") == (12.9352, 77.6245)  # same place, different typing
     assert asked == ["Koramangala, Bengaluru"]  # the second lookup never touched the network
+
+    import osmnx as ox
+
+    assert ox.settings.cache_folder == str(tmp_path / "osmnx_http")  # not ./cache in the server's working directory
 
     def offline(query):
         raise ConnectionError("no internet")

@@ -121,6 +121,13 @@ def _cache_path(lat: float, lon: float, radius_m: int, network_type: str) -> Pat
     return CACHE_DIR / f"{city_key(lat, lon, radius_m, network_type)}.graphml"
 
 
+def _configure_osmnx(ox) -> None:
+    """Keep OSMnx's own HTTP cache inside data/cache (its default is ./cache in the current directory)."""
+    ox.settings.use_cache = True
+    ox.settings.cache_folder = str(CACHE_DIR / "osmnx_http")
+    ox.settings.requests_timeout = 60
+
+
 def load_city_graph(
     lat: float,
     lon: float,
@@ -136,9 +143,7 @@ def load_city_graph(
         osm_graph = ox.load_graphml(path)
     else:
         try:
-            ox.settings.use_cache = True
-            ox.settings.cache_folder = str(CACHE_DIR / "osmnx_http")
-            ox.settings.requests_timeout = 60
+            _configure_osmnx(ox)
             osm_graph = ox.graph_from_point((lat, lon), dist=radius_m, network_type=network_type, simplify=True)
         except Exception as exc:  # network errors surface as many different exception types
             raise CityLoadError(
@@ -174,6 +179,7 @@ def geocode(place: str) -> tuple[float, float]:
     import osmnx as ox
     from osmnx._errors import InsufficientResponseError
 
+    _configure_osmnx(ox)
     try:
         lat, lon = ox.geocode(place)
     except InsufficientResponseError as exc:
