@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class SyntheticGraphRequest(BaseModel):
@@ -15,11 +15,19 @@ class SyntheticGraphRequest(BaseModel):
 
 
 class CityGraphRequest(BaseModel):
-    place: str | None = Field(None, description="geocoded with Nominatim; or give lat/lon instead")
+    place: str | None = Field(None, max_length=200, description="geocoded with Nominatim; or give lat/lon instead")
     lat: float | None = Field(None, ge=-90, le=90)
     lon: float | None = Field(None, ge=-180, le=180)
     radius_m: int = Field(1500, ge=300, le=4000)
     refresh: bool = Field(False, description="ignore the on-disk cache and fetch again")
+
+    @field_validator("place", mode="before")
+    @classmethod
+    def _blank_place_is_no_place(cls, value):
+        if isinstance(value, str):
+            value = " ".join(value.split())
+            return value or None
+        return value
 
     @model_validator(mode="after")
     def _needs_a_location(self) -> "CityGraphRequest":

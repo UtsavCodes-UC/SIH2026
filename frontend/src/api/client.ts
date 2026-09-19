@@ -38,7 +38,7 @@ export const getPresets = () => http.get<Preset[]>("/graph/presets").then((r) =>
 export const createSyntheticGraph = (body: { n_nodes: number; area_size_km: number; seed: number }) =>
   http.post<GraphView>("/graph/synthetic", body).then((r) => r.data);
 
-export const createCityGraph = (body: { lat: number; lon: number; radius_m: number; place?: string; refresh?: boolean }) =>
+export const createCityGraph = (body: { lat?: number; lon?: number; radius_m: number; place?: string; refresh?: boolean }) =>
   http.post<GraphView>("/graph/city", body).then((r) => r.data);
 
 export const setCongestion = (graphId: string, mode: CongestionMode, seed?: number, snapshotId?: string) =>

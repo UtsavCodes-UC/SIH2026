@@ -194,7 +194,7 @@ export default function App() {
         autoReoptimize={autoReoptimize}
         onAutoReoptimize={setAutoReoptimize}
         onCreateSynthetic={(body) => run("graph", () => createSyntheticGraph(body)).then((view) => view && adoptGraph(view))}
-        onLoadCity={({ name, ...body }) => run("graph", () => createCityGraph({ ...body, place: name })).then((view) => view && adoptGraph(view))}
+        onLoadCity={(body) => run("graph", () => createCityGraph(body)).then((view) => view && adoptGraph(view))}
         onRandomStops={randomStops}
         onClearStops={() => {
           setStops([]);

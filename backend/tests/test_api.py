@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.graph_model import TrafficGraph
-from app.data.osm_loader import CityLoadError
+from app.data.osm_loader import CityLoadError, UnusablePlaceError
 from app.data.synthetic_graph_generator import generate_synthetic_graph, georeference
 from app.main import app
 from app.services.graph_store import get_store
@@ -125,6 +125,67 @@ def test_city_endpoint_needs_a_location_and_maps_network_failures_to_503(monkeyp
     monkeypatch.setattr("app.api.graph.load_city_graph", unreachable)
     response = client.post("/api/graph/city", json={"lat": 28.63, "lon": 77.21})
     assert response.status_code == 503 and "Overpass" in response.json()["detail"]
+
+
+def fake_city_loader(n_nodes=30):
+    def loader(lat, lon, radius_m=1500, network_type="drive", refresh=False):
+        graph = generate_synthetic_graph(n_nodes=n_nodes, area_size_km=2, seed=5)
+        georeference(graph, lat, lon)
+        return graph
+
+    return loader
+
+
+def test_a_typed_place_is_geocoded_and_labelled_with_where_the_search_put_it(monkeypatch):
+    asked = []
+
+    def geocode(place):
+        asked.append(place)
+        return 12.9352, 77.6245
+
+    monkeypatch.setattr("app.api.graph.geocode", geocode)
+    monkeypatch.setattr("app.api.graph.load_city_graph", fake_city_loader())
+    response = client.post("/api/graph/city", json={"place": "  Koramangala,   Bengaluru ", "radius_m": 800})
+
+    assert response.status_code == 200
+    summary = response.json()["summary"]
+    assert asked == ["Koramangala, Bengaluru"]  # whitespace tidied before the lookup
+    assert summary["center"] == [12.9352, 77.6245]
+    assert summary["label"] == "Koramangala, Bengaluru (12.9352, 77.6245), 800 m radius"
+    assert summary["source"] == "city" and summary["traffic"]["kind"] == "free_flow"
+
+
+def test_a_place_with_coordinates_is_not_geocoded_again(monkeypatch):
+    def geocode(place):
+        raise AssertionError("presets already carry their coordinates")
+
+    monkeypatch.setattr("app.api.graph.geocode", geocode)
+    monkeypatch.setattr("app.api.graph.load_city_graph", fake_city_loader())
+    response = client.post("/api/graph/city", json={"place": "MG Road, Bengaluru", "lat": 12.9758, "lon": 77.6068})
+    assert response.status_code == 200 and response.json()["summary"]["label"].startswith("MG Road, Bengaluru, ")
+
+
+def test_blank_place_names_are_rejected_before_any_lookup():
+    for blank in ("", "   "):
+        assert client.post("/api/graph/city", json={"place": blank}).status_code == 422
+
+
+def test_an_unknown_place_is_the_users_to_fix_not_a_server_outage(monkeypatch):
+    def geocode(place):
+        raise UnusablePlaceError("Couldn't find a place called 'Atlantis'. Try adding the city or country.")
+
+    monkeypatch.setattr("app.api.graph.geocode", geocode)
+    response = client.post("/api/graph/city", json={"place": "Atlantis"})
+    assert response.status_code == 422 and "Atlantis" in response.json()["detail"]
+
+
+def test_a_place_with_almost_no_roads_is_refused_with_advice(monkeypatch):
+    monkeypatch.setattr("app.api.graph.geocode", lambda place: (10.0, 20.0))
+    monkeypatch.setattr("app.api.graph.load_city_graph", fake_city_loader(n_nodes=10))  # the smallest network the generator makes
+    monkeypatch.setattr("app.api.graph.MIN_CITY_NODES", 11)  # so 10 intersections counts as "almost no roads"
+    response = client.post("/api/graph/city", json={"place": "Middle of the sea", "radius_m": 500})
+    assert response.status_code == 422
+    assert "10 drivable intersections" in response.json()["detail"] and "larger radius" in response.json()["detail"]
 
 
 # ---- optimize -----------------------------------------------------------------

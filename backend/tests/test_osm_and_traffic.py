@@ -100,3 +100,53 @@ def test_traffic_argument_validation():
     no_positions.add_edge("a", "b", 1.0, 1.0)
     with pytest.raises(ValueError):
         apply_rush_hour(no_positions)
+
+
+# ---- geocoding a typed place name -------------------------------------------------
+
+
+def test_geocode_remembers_answers_on_disk_so_a_typed_place_works_offline_later(tmp_path, monkeypatch):
+    from app.data import osm_loader
+
+    monkeypatch.setattr(osm_loader, "CACHE_DIR", tmp_path)
+    asked = []
+
+    def nominatim(query):
+        asked.append(query)
+        return (12.9352, 77.6245)
+
+    monkeypatch.setattr("osmnx.geocode", nominatim)
+
+    assert osm_loader.geocode("Koramangala, Bengaluru") == (12.9352, 77.6245)
+    assert osm_loader.geocode("  koramangala,   BENGALURU ") == (12.9352, 77.6245)  # same place, different typing
+    assert asked == ["Koramangala, Bengaluru"]  # the second lookup never touched the network
+
+    def offline(query):
+        raise ConnectionError("no internet")
+
+    monkeypatch.setattr("osmnx.geocode", offline)
+    assert osm_loader.geocode("Koramangala, Bengaluru") == (12.9352, 77.6245)
+
+
+def test_geocode_tells_an_unknown_place_apart_from_a_network_failure(tmp_path, monkeypatch):
+    from osmnx._errors import InsufficientResponseError
+
+    from app.data import osm_loader
+
+    monkeypatch.setattr(osm_loader, "CACHE_DIR", tmp_path)
+
+    def unknown(query):
+        raise InsufficientResponseError("Nominatim could not geocode query")
+
+    monkeypatch.setattr("osmnx.geocode", unknown)
+    with pytest.raises(osm_loader.UnusablePlaceError, match="Couldn't find a place called 'Atlantis'"):
+        osm_loader.geocode("Atlantis")
+
+    def down(query):
+        raise ConnectionError("no internet")
+
+    monkeypatch.setattr("osmnx.geocode", down)
+    with pytest.raises(osm_loader.CityLoadError) as caught:
+        osm_loader.geocode("Atlantis")
+    assert not isinstance(caught.value, osm_loader.UnusablePlaceError)  # retrying later could work
+    assert not (tmp_path / "geocode.json").exists()  # failures are never remembered

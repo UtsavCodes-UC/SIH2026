@@ -114,6 +114,7 @@ label {
 }
 
 input[type="number"],
+input[type="text"],
 select {
   border: 1px solid var(--line);
   border-radius: 6px;

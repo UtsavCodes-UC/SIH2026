@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import benchmark, graph, optimize, traffic
 from app.core.vrp_formulation import UnreachableStopError
-from app.data.osm_loader import CityLoadError
+from app.data.osm_loader import CityLoadError, UnusablePlaceError
 from app.data.tomtom import TrafficProviderError
 from app.services.live_traffic_service import TrafficRequestError, TrafficUnavailableError
 from app.services.problem_builder import InvalidProblemError
@@ -29,7 +29,8 @@ app.add_middleware(
 @app.exception_handler(InvalidProblemError)
 @app.exception_handler(UnreachableStopError)
 @app.exception_handler(TrafficRequestError)
-async def unprocessable(_: Request, exc: ValueError) -> JSONResponse:
+@app.exception_handler(UnusablePlaceError)
+async def unprocessable(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 

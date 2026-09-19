@@ -18,6 +18,7 @@ scenario" demonstration deliverable.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -48,6 +49,10 @@ PRESETS = [
 
 class CityLoadError(RuntimeError):
     """The city network could not be fetched (usually: no network / Overpass unreachable)."""
+
+
+class UnusablePlaceError(CityLoadError):
+    """The request itself can't work, so retrying won't help: an unknown place name, or a place with almost no roads."""
 
 
 def _first(value):
@@ -146,12 +151,47 @@ def load_city_graph(
     return to_traffic_graph(osm_graph, lat, lon)
 
 
+def _geocode_cache_path() -> Path:
+    return CACHE_DIR / "geocode.json"
+
+
+def _read_geocode_cache() -> dict[str, list[float]]:
+    try:
+        data = json.loads(_geocode_cache_path().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def geocode(place: str) -> tuple[float, float]:
-    """Place name -> (lat, lon) via Nominatim (needs network)."""
+    """Place name -> (lat, lon) via Nominatim. Answers are remembered on disk, so a place that was
+    typed once loads again later without the internet (its map is cached the same way)."""
+    key = " ".join(place.lower().split())
+    cached = _read_geocode_cache().get(key)
+    if cached and len(cached) == 2:
+        return float(cached[0]), float(cached[1])
+
     import osmnx as ox
+    from osmnx._errors import InsufficientResponseError
 
     try:
         lat, lon = ox.geocode(place)
-    except Exception as exc:
-        raise CityLoadError(f"could not geocode {place!r}: {exc}") from exc
+    except InsufficientResponseError as exc:
+        raise UnusablePlaceError(
+            f"Couldn't find a place called {place!r}. Try adding the city or country, "
+            "for example 'Koramangala, Bengaluru, India'."
+        ) from exc
+    except Exception as exc:  # network errors surface as many different exception types
+        raise CityLoadError(
+            f"could not look up {place!r} on OpenStreetMap: {exc}. "
+            "Check the internet connection, or pick one of the ready-made places."
+        ) from exc
+
+    cache = _read_geocode_cache()
+    cache[key] = [float(lat), float(lon)]
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _geocode_cache_path().write_text(json.dumps(cache, indent=1), encoding="utf-8")
+    except OSError:
+        pass  # a read-only disk only costs the offline shortcut
     return float(lat), float(lon)

@@ -16,7 +16,8 @@ interface Props {
   autoReoptimize: boolean;
   onAutoReoptimize: (value: boolean) => void;
   onCreateSynthetic: (body: { n_nodes: number; area_size_km: number; seed: number }) => void;
-  onLoadCity: (body: { lat: number; lon: number; radius_m: number; name: string }) => void;
+  // presets carry their coordinates; a typed place name is looked up by the server
+  onLoadCity: (body: { place: string; radius_m: number; lat?: number; lon?: number }) => void;
   onRandomStops: () => void;
   onClearStops: () => void;
   onOptimize: () => void;
@@ -51,6 +52,7 @@ export default function Sidebar(props: Props) {
   const [syn, setSyn] = useState({ n_nodes: 80, area_size_km: 8, seed: 1 });
   const [presetIndex, setPresetIndex] = useState(0);
   const [radius, setRadius] = useState(1200);
+  const [customPlace, setCustomPlace] = useState("");
   const idle = busy === null;
   const isCity = graph?.summary.source === "city";
   const trafficKind = graph?.summary.traffic.kind;
@@ -60,6 +62,19 @@ export default function Sidebar(props: Props) {
     if (!props.snapshots.some((x) => x.id === snapshotId)) setSnapshotId(props.snapshots[0]?.id ?? "");
   }, [props.snapshots, snapshotId]);
   const ready = graph !== null && depot !== null && stops.length > 0;
+  const searching = presetIndex === presets.length; // the last dropdown entry: type any place
+  const typed = customPlace.trim();
+  const canLoad = idle && (searching ? typed.length >= 2 : presets.length > 0);
+
+  function loadCity() {
+    if (!canLoad) return;
+    if (searching) {
+      props.onLoadCity({ place: typed, radius_m: radius });
+    } else {
+      const p = presets[presetIndex];
+      props.onLoadCity({ place: p.name, lat: p.lat, lon: p.lon, radius_m: radius });
+    }
+  }
 
   return (
     <aside className="sidebar">
@@ -99,17 +114,33 @@ export default function Sidebar(props: Props) {
                     {p.name}
                   </option>
                 ))}
+                <option value={presets.length}>Search for another place…</option>
               </select>
             </label>
+            {searching && (
+              <label>
+                Place name
+                <input
+                  type="text"
+                  value={customPlace}
+                  maxLength={200}
+                  placeholder="e.g. Koramangala, Bengaluru"
+                  autoFocus
+                  onChange={(e) => setCustomPlace(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && loadCity()}
+                />
+              </label>
+            )}
             <label>Radius (m){numberInput(radius, setRadius, 300, 4000, 100)}</label>
-            <button
-              className="btn"
-              disabled={!idle || presets.length === 0}
-              onClick={() => props.onLoadCity({ lat: presets[presetIndex].lat, lon: presets[presetIndex].lon, radius_m: radius, name: presets[presetIndex].name })}
-            >
+            <button className="btn" disabled={!canLoad} onClick={loadCity}>
               {busy === "graph" ? "Loading from OpenStreetMap…" : "Load road network"}
             </button>
-            <p className="hint">The first load of a place downloads it from OpenStreetMap (up to a couple of minutes); later loads are instant.</p>
+            <p className="hint">
+              {searching
+                ? "Any place OpenStreetMap knows, anywhere in the world. Add the city (\"Indiranagar, Bengaluru\") so the search picks the right one; the map is centred on the spot it finds, and the graph summary below shows the coordinates. "
+                : ""}
+              The first load of a place downloads it from OpenStreetMap (up to a couple of minutes); later loads are instant.
+            </p>
           </>
         )}
 

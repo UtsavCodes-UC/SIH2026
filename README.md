@@ -40,7 +40,10 @@ cd backend && python scripts/warm_city_cache.py
 
 ## Using the UI
 
-1. **Road network** — generate a synthetic network, or load a real place.
+1. **Road network** — generate a synthetic network, or load a real place: pick one of the four presets,
+   or choose *Search for another place…* and type any name OpenStreetMap knows (add the city, e.g.
+   "Indiranagar, Bengaluru"). The map is centred on the spot the search finds and the summary shows its
+   coordinates. A place you typed once is remembered, so it loads again later without the internet.
 2. **Delivery problem** — draw random stops, or click the map ("set depot" / "toggle stops");
    set the fleet size (blank = auto) and vehicle capacity.
 3. **Solver** — pick QPSO / PSO / GA / nearest neighbour and press *Optimize routes*: routes are drawn
@@ -88,7 +91,7 @@ Interactive docs at http://localhost:8000/docs.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/graph/synthetic` · `POST /api/graph/city` | create a network; returns nodes, roads and a `graph_id` |
+| `POST /api/graph/synthetic` · `POST /api/graph/city` | create a network (a city from `place` or `lat`/`lon` + `radius_m`); returns nodes, roads and a `graph_id`. An unknown place is a 422 with advice, a failed lookup a 503 |
 | `GET /api/graph/presets` · `GET /api/graph/{id}` | ready-made places · read a network back |
 | `POST /api/graph/{id}/congestion` | `random` / `rush_hour` / `clear` (simulated), `live` (TomTom, real cities), `snapshot` (replay a recording): the dynamic weight update |
 | `GET /api/traffic/status` | whether a TomTom key is configured (never returns the key) |
