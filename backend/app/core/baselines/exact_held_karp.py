@@ -25,6 +25,8 @@ MAX_STOPS_FOR_EXACT = 16
 
 
 def held_karp(graph: TrafficGraph, request: RouteRequest) -> OptimizationResult:
+    if request.n_vehicles > 1:
+        raise ValueError("held_karp is a single-vehicle exact solver; multi-vehicle requests have no exact baseline here")
     start = time.perf_counter()
     problem = RoutingProblem(graph, request)
 

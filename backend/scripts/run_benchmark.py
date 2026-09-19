@@ -55,7 +55,7 @@ def _save_convergence_plot(report) -> None:
 
     plt.figure(figsize=(8, 5))
     for algo in report.algorithms:
-        history = algo.result.convergence_history
+        history = algo.raw_result.convergence_history
         if len(history) > 1:  # skip single-shot algorithms (nearest-neighbor, exact)
             plt.plot(history, label=algo.name)
     plt.xlabel("iteration")

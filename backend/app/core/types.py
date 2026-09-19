@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 @dataclass
 class OptimizationResult:
-    best_route: list
+    best_route: list  # flat depot-delimited route, e.g. [0, a, b, 0, c, 0]; see vrp_formulation.split_at_depot
     best_cost: float
     convergence_history: list[float]
     runtime_sec: float

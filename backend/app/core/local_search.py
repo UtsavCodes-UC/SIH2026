@@ -28,12 +28,31 @@ from typing import Callable, Sequence
 import numpy as np
 
 from app.core.types import OptimizationResult
-from app.core.vrp_formulation import RoutingProblem
+from app.core.vrp_formulation import RoutingProblem, split_at_depot
 
 
 def two_opt(order: Sequence, leg_time: Callable[[object, object], float], depot, max_passes: int = 100) -> list:
+    """Reverse route segments until no single reversal shortens the tour.
+
+    Leg costs are NOT assumed symmetric: our graphs are directed with an
+    independent congestion factor per direction, so reversing a segment also
+    changes the direction every internal leg is driven in. The textbook 2-opt
+    delta ignores that and, on asymmetric costs, accepted "improving" moves that
+    lengthened the tour (up to +46% in a random test). Forward and reverse
+    prefix sums give the exact cost of a reversal in O(1); they are rebuilt only
+    after a move is accepted.
+    """
     route = [depot, *order, depot]
     n = len(route)
+
+    def prefix_sums() -> tuple[list[float], list[float]]:
+        forward, reverse = [0.0] * n, [0.0] * n
+        for k in range(n - 1):
+            forward[k + 1] = forward[k] + leg_time(route[k], route[k + 1])
+            reverse[k + 1] = reverse[k] + leg_time(route[k + 1], route[k])
+        return forward, reverse
+
+    forward, reverse = prefix_sums()
     improved = True
     passes = 0
 
@@ -41,14 +60,16 @@ def two_opt(order: Sequence, leg_time: Callable[[object, object], float], depot,
         improved = False
         passes += 1
         for i in range(1, n - 2):
-            a, b = route[i - 1], route[i]
             for j in range(i + 1, n - 1):
-                c, d = route[j], route[j + 1]
-                delta = (leg_time(a, c) + leg_time(b, d)) - (leg_time(a, b) + leg_time(c, d))
+                a, b, c, d = route[i - 1], route[i], route[j], route[j + 1]
+                delta = (
+                    leg_time(a, c) + (reverse[j] - reverse[i]) + leg_time(b, d)
+                    - leg_time(a, b) - (forward[j] - forward[i]) - leg_time(c, d)
+                )
                 if delta < -1e-9:
                     route[i : j + 1] = reversed(route[i : j + 1])
+                    forward, reverse = prefix_sums()
                     improved = True
-                    b = route[i]  # segment start changed; keep scanning from the new b
 
     return route[1:-1]
 
@@ -58,17 +79,21 @@ def polish_result(
     result: OptimizationResult,
     penalty_weight: float = 1000.0,
 ) -> OptimizationResult:
-    """Run 2-opt on `result`'s route and return a new OptimizationResult with
-    the polished route/cost. Runtime of the polish pass is added to the
-    reported runtime; the polished cost is appended to convergence_history
-    so it's visible as one extra point on a convergence chart."""
+    """Run 2-opt on each of `result`'s vehicle routes and return a new
+    OptimizationResult with the polished routes/cost. Each route is polished
+    on its own, so the stops-per-vehicle assignment (and thus every load) is
+    unchanged. Runtime of the polish pass is added to the reported runtime;
+    the polished cost is appended to convergence_history so it's visible as
+    one extra point on a convergence chart."""
     start = time.perf_counter()
 
-    depot = result.best_route[0]
-    order = result.best_route[1:-1]
-    polished_order = two_opt(order, problem.leg_time, depot)
+    depot = problem.request.depot
+    polished_routes = [
+        [depot, *two_opt(route[1:-1], problem.leg_time, depot), depot]
+        for route in split_at_depot(result.best_route, depot)
+    ]
 
-    evaluation = problem.evaluate(polished_order)
+    evaluation = problem.evaluate_routes(polished_routes)
     cost = evaluation.total_time_min + penalty_weight * evaluation.capacity_violation
     polish_runtime = time.perf_counter() - start
 
@@ -112,7 +137,12 @@ def refine_positions_with_two_opt(
 
     Returns (new_positions, new_costs); 2-opt only ever accepts improving
     moves, so new_costs[i] <= original cost of positions[i] for every i.
+
+    Single-vehicle only: a polished multi-vehicle route need not decode back to
+    the same vehicle split, so writing it back into a particle isn't sound.
     """
+    if problem.request.n_vehicles > 1:
+        raise NotImplementedError("memetic refinement supports single-vehicle requests only")
     depot = problem.request.depot
     new_positions = positions.copy()
     costs = np.empty(len(positions))

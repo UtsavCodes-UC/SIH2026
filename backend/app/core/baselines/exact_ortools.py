@@ -34,6 +34,8 @@ def ortools_solve(
 ) -> OptimizationResult:
     if not ORTOOLS_AVAILABLE:
         raise ImportError("ortools is not installed. Run: pip install ortools")
+    if request.n_vehicles > 1:
+        raise NotImplementedError("the OR-Tools wrapper models one vehicle; add a capacity dimension for a fleet")
 
     start = time.perf_counter()
     problem = RoutingProblem(graph, request)

@@ -6,6 +6,11 @@ At each step, go to the closest not-yet-visited stop (by shortest-path travel
 time from the current position); return to the depot at the end. Deterministic,
 O(n^2), no tuning knobs -- the "cheap heuristic" reference point that QPSO/PSO/GA
 are expected to beat, and that the exact solver's optimality gap is measured against.
+
+With several vehicles it is capacity-aware: the vehicle only considers stops that
+still fit; when none do, it returns to the depot and the next vehicle starts
+there. The last vehicle takes whatever remains. The resulting order decodes
+(RoutingProblem.split) back into exactly these routes.
 """
 
 from __future__ import annotations
@@ -24,12 +29,23 @@ def nearest_neighbor(graph: TrafficGraph, request: RouteRequest) -> Optimization
     remaining = list(dict.fromkeys(request.stops))
     order: list = []
     current = request.depot
+    load, vehicles_used = 0.0, 1
 
     while remaining:
-        next_stop = min(remaining, key=lambda s: problem.leg_time(current, s))
+        candidates = remaining
+        if request.n_vehicles > 1 and vehicles_used < request.n_vehicles:
+            fitting = [s for s in remaining if load + request.demands.get(s, 0) <= request.vehicle_capacity]
+            if fitting:
+                candidates = fitting
+            elif load > 0:  # nothing else fits: send this vehicle home, the next one starts at the depot
+                current, load, vehicles_used = request.depot, 0.0, vehicles_used + 1
+
+        next_stop = min(candidates, key=lambda s: problem.leg_time(current, s))
         order.append(next_stop)
         remaining.remove(next_stop)
         current = next_stop
+        if request.n_vehicles > 1:
+            load += request.demands.get(next_stop, 0)
 
     evaluation = problem.evaluate(order)
     cost = evaluation.total_time_min + 1000.0 * evaluation.capacity_violation

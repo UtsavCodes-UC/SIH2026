@@ -1,39 +1,33 @@
 """
-Regression guard for the Day-1 tuning pass (see scripts/tune_qpso.py):
-with the tuned defaults (particles=40, iterations=800, beta=(1.0, 0.2)) and
-a 2-opt polish applied to both, QPSO should beat classical PSO on average
-across a range of instance sizes. This was validated with 30 instances per
-size in scripts/tune_qpso.py output; this test uses a smaller fixed sample
-so it stays fast, with a tolerance margin against single-run noise.
+Regression guard for QPSO's advantage over classical PSO.
+
+Asserts on the RAW metaheuristic output (no local search): same encoding,
+same fitness, same 40-particle / 800-iteration budget, so this is a
+like-for-like algorithm comparison. On raw cost QPSO wins ~90% of instances
+by ~17-27% (30 instances/size, three PSO parameter sets -- see
+docs/BENCHMARKS.md Finding 7 and scripts/compare_qpso_vs_pso.py). This test
+uses a small fixed sample so it stays fast; the margins below are loose
+enough to tolerate one unlucky instance but not a real regression.
+
+It deliberately does NOT assert on the 2-opt-polished cost: a uniform polish
+shrinks the gap to ~1-2% with p-values that are often not significant, so it
+would be a flaky guard rather than a meaningful one.
 """
 
-from app.core.baselines.classical_pso import ClassicalPSO
-from app.core.local_search import polish_result
-from app.core.qpso import QPSO
-from app.core.vrp_formulation import RouteRequest, RoutingProblem
-from app.data.synthetic_graph_generator import generate_synthetic_graph
+from app.core.benchmark import run_qpso_vs_pso
 
 
-def test_qpso_beats_classical_pso_on_average_across_sizes():
-    instance_specs = [(20, 300), (20, 301), (30, 300), (30, 301)]
+def test_qpso_beats_classical_pso_on_raw_cost_across_sizes():
+    for n_stops in (20, 30):
+        report = run_qpso_vs_pso(n_stops, instance_seeds=range(300, 304))
+        raw = report.raw
 
-    qpso_costs, pso_costs = [], []
-    for n_stops, seed in instance_specs:
-        graph = generate_synthetic_graph(n_nodes=n_stops * 2, seed=seed)
-        stops = list(range(1, n_stops + 1))
-        request = RouteRequest(depot=0, stops=stops)
-        problem = RoutingProblem(graph, request)
-
-        qpso_result = polish_result(problem, QPSO(graph, request, seed=1).run())
-        pso_result = polish_result(problem, ClassicalPSO(graph, request, seed=1).run())
-
-        qpso_costs.append(qpso_result.best_cost)
-        pso_costs.append(pso_result.best_cost)
-
-    avg_qpso = sum(qpso_costs) / len(qpso_costs)
-    avg_pso = sum(pso_costs) / len(pso_costs)
-
-    assert avg_qpso <= avg_pso, (
-        f"QPSO regressed against classical PSO: avg cost {avg_qpso:.2f} vs {avg_pso:.2f}. "
-        "See scripts/tune_qpso.py to re-tune if this starts failing after an algorithm change."
-    )
+        assert raw.wins >= 3, (
+            f"{n_stops} stops: QPSO won only {raw.wins}/4 instances on raw cost "
+            f"(mean improvement {raw.mean_improvement_pct:+.1f}%). "
+            "See scripts/compare_qpso_vs_pso.py and scripts/tune_qpso.py to investigate."
+        )
+        assert raw.mean_improvement_pct > 5.0, (
+            f"{n_stops} stops: QPSO's mean raw improvement over PSO fell to {raw.mean_improvement_pct:+.1f}% "
+            "(expected ~17-27%)."
+        )

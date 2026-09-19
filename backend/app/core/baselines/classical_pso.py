@@ -45,6 +45,8 @@ class ClassicalPSO:
         memetic_max_passes: int = 10,
         seed: int | None = None,
     ):
+        if memetic_interval and request.n_vehicles > 1:
+            raise ValueError("memetic_interval supports single-vehicle requests only")
         self.problem = RoutingProblem(graph, request)
         self.stops = list(dict.fromkeys(request.stops))
         self.n = len(self.stops)
