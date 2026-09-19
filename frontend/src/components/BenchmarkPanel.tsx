@@ -2,6 +2,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import type { BenchmarkResponse } from "../api/types";
 import { ALGORITHM_COLORS, ALGORITHM_LABELS, fmt } from "../lib/helpers";
 import ConvergenceChart from "./ConvergenceChart";
+import TrafficBadge from "./TrafficBadge";
 
 export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResponse | null }) {
   if (!benchmark) {
@@ -25,6 +26,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
           {w}
         </p>
       ))}
+      <TrafficBadge info={benchmark.traffic} inline />
       <div className="results-body">
         <div>
           <table className="table">

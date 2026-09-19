@@ -1,6 +1,7 @@
 import type { OptimizeResponse } from "../api/types";
 import { ALGORITHM_COLORS, ALGORITHM_LABELS, fmt, vehicleColor } from "../lib/helpers";
 import ConvergenceChart from "./ConvergenceChart";
+import TrafficBadge from "./TrafficBadge";
 
 export default function ResultsPanel({ result }: { result: OptimizeResponse | null }) {
   if (!result) {
@@ -19,6 +20,7 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
           {w}
         </p>
       ))}
+      <TrafficBadge info={result.traffic} inline />
       <div className="kpis">
         <div className="kpi" title="All vans' driving minutes added together: what the optimizer minimizes (a cost measure)">
           <span>Total driving, all vans</span>

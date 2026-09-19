@@ -28,6 +28,7 @@ def optimize(req: OptimizeRequest, store: GraphStore = Depends(get_store)) -> Op
         outputs = route_outputs(stored, solution.problem, routes)
         problem = resolved_problem(solution.problem)
         warnings = problem_warnings(solution.problem)
+        traffic = stored.traffic
 
     return OptimizeResponse(
         graph_id=stored.graph_id,
@@ -45,4 +46,5 @@ def optimize(req: OptimizeRequest, store: GraphStore = Depends(get_store)) -> Op
         runtime_sec=solution.final.runtime_sec,
         iterations=solution.raw.iterations,
         warnings=warnings,
+        traffic=traffic,
     )

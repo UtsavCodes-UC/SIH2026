@@ -1,6 +1,6 @@
-import { useState } from "react";
-import type { Algorithm, CongestionMode, GraphView, Preset } from "../api/types";
-import { ALGORITHM_LABELS } from "../lib/helpers";
+import { useEffect, useState } from "react";
+import type { Algorithm, CongestionMode, GraphView, Preset, SnapshotInfo, TrafficStatus } from "../api/types";
+import { ALGORITHM_LABELS, formatCaptured } from "../lib/helpers";
 import type { Busy, SolverParams } from "../lib/params";
 
 interface Props {
@@ -21,7 +21,10 @@ interface Props {
   onClearStops: () => void;
   onOptimize: () => void;
   onBenchmark: () => void;
-  onTraffic: (mode: CongestionMode) => void;
+  onTraffic: (mode: CongestionMode, snapshotId?: string) => void;
+  trafficStatus: TrafficStatus | null;
+  snapshots: SnapshotInfo[];
+  onSaveSnapshot: () => void;
 }
 
 const ALGORITHMS: Algorithm[] = ["qpso", "pso", "ga", "nearest_neighbor"];
@@ -49,6 +52,13 @@ export default function Sidebar(props: Props) {
   const [presetIndex, setPresetIndex] = useState(0);
   const [radius, setRadius] = useState(1200);
   const idle = busy === null;
+  const isCity = graph?.summary.source === "city";
+  const trafficKind = graph?.summary.traffic.kind;
+  const canSave = trafficKind === "live" || trafficKind === "recorded";
+  const [snapshotId, setSnapshotId] = useState("");
+  useEffect(() => {
+    if (!props.snapshots.some((x) => x.id === snapshotId)) setSnapshotId(props.snapshots[0]?.id ?? "");
+  }, [props.snapshots, snapshotId]);
   const ready = graph !== null && depot !== null && stops.length > 0;
 
   return (
@@ -174,7 +184,8 @@ export default function Sidebar(props: Props) {
       </section>
 
       <section>
-        <h2>4 · Live traffic</h2>
+        <h2>4 · Traffic</h2>
+        <p className="hint">Simulated conditions, for any network:</p>
         <div className="row">
           {(
             [
@@ -188,6 +199,46 @@ export default function Sidebar(props: Props) {
             </button>
           ))}
         </div>
+
+        <h3 className="subhead">Real traffic (TomTom)</h3>
+        <div className="row">
+          <button className="btn grow" disabled={!idle || !isCity} onClick={() => props.onTraffic("live")}>
+            {busy === "live" ? "Fetching…" : "Fetch live traffic"}
+          </button>
+          <button className="btn btn-secondary" disabled={!idle || !canSave} onClick={props.onSaveSnapshot} title="Record the current real traffic so it can be replayed later, even offline">
+            Save snapshot
+          </button>
+        </div>
+        {props.snapshots.length > 0 && (
+          <div className="row">
+            <label className="grow">
+              Recorded traffic
+              <select value={snapshotId} onChange={(e) => setSnapshotId(e.target.value)}>
+                {props.snapshots.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.captured_at ? formatCaptured(x.captured_at) : x.id}
+                    {x.roads_measured !== null ? ` · ${x.roads_measured} roads` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="btn btn-secondary" disabled={!idle || !snapshotId} onClick={() => props.onTraffic("snapshot", snapshotId)}>
+              Replay
+            </button>
+          </div>
+        )}
+        {!isCity && <p className="hint">Real traffic works on real-city networks: use the Real city tab.</p>}
+        {isCity && props.trafficStatus && !props.trafficStatus.live_available && (
+          <p className="hint">
+            No TomTom key found. Add <code>TOMTOM_API_KEY</code> to <code>backend/.env</code>, then press Fetch. Recorded traffic can still be replayed.
+          </p>
+        )}
+        {isCity && props.trafficStatus?.live_available && (
+          <p className="hint">
+            Asks TomTom about roads across the map (about 25 seconds). Presses within {Math.round(props.trafficStatus.min_interval_sec / 60)} minutes reuse the last reading, to save the free daily quota.
+          </p>
+        )}
+
         <label className="check">
           <input type="checkbox" checked={props.autoReoptimize} onChange={(e) => props.onAutoReoptimize(e.target.checked)} />
           Re-optimize automatically after traffic changes

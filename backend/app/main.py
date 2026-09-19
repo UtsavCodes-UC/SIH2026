@@ -5,10 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import benchmark, graph, optimize
+from app.api import benchmark, graph, optimize, traffic
 from app.core.vrp_formulation import UnreachableStopError
 from app.data.osm_loader import CityLoadError
+from app.data.tomtom import TrafficProviderError
+from app.services.live_traffic_service import TrafficRequestError, TrafficUnavailableError
 from app.services.problem_builder import InvalidProblemError
+from app.services.snapshots import SnapshotNotFound
 
 app = FastAPI(
     title="SIH26137 — Quantum-Inspired Traffic Route Optimization",
@@ -25,13 +28,25 @@ app.add_middleware(
 
 @app.exception_handler(InvalidProblemError)
 @app.exception_handler(UnreachableStopError)
+@app.exception_handler(TrafficRequestError)
 async def unprocessable(_: Request, exc: ValueError) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 @app.exception_handler(CityLoadError)
-async def city_unavailable(_: Request, exc: CityLoadError) -> JSONResponse:
+@app.exception_handler(TrafficUnavailableError)
+async def unavailable(_: Request, exc: RuntimeError) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(TrafficProviderError)
+async def provider_failed(_: Request, exc: TrafficProviderError) -> JSONResponse:
+    return JSONResponse(status_code=502, content={"detail": str(exc)})
+
+
+@app.exception_handler(SnapshotNotFound)
+async def snapshot_missing(_: Request, exc: SnapshotNotFound) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"detail": f"unknown snapshot {exc.args[0]!r}"})
 
 
 @app.get("/health")
@@ -43,6 +58,7 @@ api = APIRouter(prefix="/api")
 api.include_router(graph.router)
 api.include_router(optimize.router)
 api.include_router(benchmark.router)
+api.include_router(traffic.router)
 
 
 @api.get("/health")

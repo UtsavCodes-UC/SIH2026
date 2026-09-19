@@ -523,3 +523,105 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- traffic source badge ---------- */
+.traffic-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  max-width: 480px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.traffic-badge.inline {
+  box-shadow: none;
+  margin: 0 0 12px;
+}
+
+.traffic-badge .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #8a8f98;
+}
+
+.traffic-badge .credit {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.traffic-live .dot {
+  background: #1f9d55;
+  animation: live-pulse 1.6s infinite;
+}
+
+.traffic-live strong {
+  color: #1f7a4d;
+}
+
+.traffic-recorded .dot {
+  background: #2e6f95;
+}
+
+.traffic-recorded strong {
+  color: #2e6f95;
+}
+
+.traffic-simulated .dot {
+  background: #e0a100;
+}
+
+.traffic-simulated strong {
+  color: #8a6100;
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(31, 157, 85, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(31, 157, 85, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(31, 157, 85, 0);
+  }
+}
+
+.map-badge {
+  position: absolute;
+  z-index: 500;
+  top: 12px;
+  right: 12px;
+  /* never run under the toolbar on the left (56px offset + ~275px wide) */
+  max-width: calc(100% - 350px);
+  min-width: 180px;
+}
+
+.map-badge .traffic-badge {
+  max-width: 100%;
+}
+
+.subhead {
+  font-size: 12px;
+  margin: 14px 0 6px;
+}
+
+.banner.ok {
+  top: 12px;
+  background: #e6f6ec;
+  color: #1f6f42;
+  border: 1px solid #b5e2c6;
+}
+
+code {
+  font-size: 11px;
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 1px 4px;
+}

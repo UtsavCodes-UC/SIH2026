@@ -78,6 +78,11 @@ export function coordinateIndex(nodes: GraphView["nodes"]): Map<number, LatLng> 
 
 export const fmt = (value: number, digits = 1) => value.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
+/** "Sat 19 Sep, 6:15 pm" in the viewer's own time zone. */
+export function formatCaptured(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
 /** Keeps a chart responsive: at most `max` evenly spaced points, always including the last. */
 export function downsample(values: number[], max = 240): { x: number; y: number }[] {
   if (values.length <= max) return values.map((y, x) => ({ x, y }));

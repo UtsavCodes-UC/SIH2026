@@ -29,17 +29,50 @@ class CityGraphRequest(BaseModel):
 
 
 class CongestionRequest(BaseModel):
-    mode: Literal["random", "rush_hour", "clear"]
+    """`live` reads real traffic from the provider (real-city networks only); `snapshot` replays a
+    recording made earlier from live data; the others are simulated."""
+
+    mode: Literal["random", "rush_hour", "clear", "live", "snapshot"]
     seed: int | None = None
     low: float = Field(0.8, gt=0, le=10)  # random mode
     high: float = Field(2.5, gt=0, le=10)
     peak: float = Field(2.5, ge=1, le=10)  # rush-hour mode
+    snapshot_id: str | None = None  # snapshot mode
 
     @model_validator(mode="after")
-    def _low_not_above_high(self) -> "CongestionRequest":
+    def _check_mode_arguments(self) -> "CongestionRequest":
         if self.low > self.high:
             raise ValueError("`low` must not exceed `high`")
+        if self.mode == "snapshot" and not self.snapshot_id:
+            raise ValueError("`snapshot_id` is required for mode 'snapshot'")
         return self
+
+
+class TrafficInfo(BaseModel):
+    """Where the congestion currently on the graph came from. The UI must show this next to the map:
+    simulated or recorded traffic is never to be presented as live."""
+
+    kind: Literal["free_flow", "simulated", "live", "recorded"]
+    label: str  # e.g. "random", "rush hour", "TomTom"
+    provider: str | None = None
+    captured_at: str | None = None  # ISO 8601, UTC; when a live/recorded reading was taken
+    roads_measured: int | None = None  # roads with a real reading (the rest are estimated from neighbours)
+    roads_total: int = 0
+    cached: bool = False  # a recent live reading was reused instead of asking the provider again
+
+
+class TrafficStatus(BaseModel):
+    provider: str
+    live_available: bool  # an API key is configured
+    min_interval_sec: float
+
+
+class SnapshotInfo(BaseModel):
+    id: str
+    provider: str | None
+    captured_at: str | None
+    roads_measured: int | None
+    roads_total: int
 
 
 class Preset(BaseModel):
@@ -57,6 +90,7 @@ class GraphSummary(BaseModel):
     center: tuple[float, float]
     bounds: tuple[tuple[float, float], tuple[float, float]]  # (south, west), (north, east)
     mean_congestion: float
+    traffic: TrafficInfo
 
 
 class GraphView(BaseModel):

@@ -76,36 +76,44 @@ def to_traffic_graph(osm_graph: nx.MultiDiGraph, centre_lat: float, centre_lon: 
         lat, lon = float(data["y"]), float(data["x"])
         graph.add_node(int(node), lat=lat, lon=lon, pos=local_km(lat, lon, centre_lat, centre_lon))
 
-    best: dict[tuple[int, int], tuple[float, float, list | None]] = {}
+    best: dict[tuple[int, int], tuple[float, float, list | None, str | None]] = {}
     for u, v, data in kept.edges(data=True):
         if u == v:
             continue
         length_km = float(data.get("length", 0.0)) / 1000.0
         if length_km <= 0:
             continue
-        minutes = length_km / parse_speed_kph(data.get("maxspeed"), data.get("highway")) * 60.0
+        highway = _first(data.get("highway"))
+        minutes = length_km / parse_speed_kph(data.get("maxspeed"), highway) * 60.0
         geometry = data.get("geometry")
         shape = [(lat, lon) for lon, lat in geometry.coords] if geometry is not None else None
         key = (int(u), int(v))
         # parallel roads: keep the quickest; on a tie keep the one that has road geometry to draw
         if key not in best:
-            best[key] = (length_km, minutes, shape)
+            best[key] = (length_km, minutes, shape, highway)
         else:
-            _, best_minutes, best_shape = best[key]
+            _, best_minutes, best_shape, _ = best[key]
             faster = minutes < best_minutes - 1e-12
             tie_with_shape = abs(minutes - best_minutes) <= 1e-12 and best_shape is None and shape is not None
             if faster or tie_with_shape:
-                best[key] = (length_km, minutes, shape)
+                best[key] = (length_km, minutes, shape, highway)
 
-    for (u, v), (length_km, minutes, shape) in best.items():
+    for (u, v), (length_km, minutes, shape, highway) in best.items():
         graph.add_edge(u, v, length_km, minutes, 1.0)
         if shape is not None:
             graph.graph[u][v]["shape"] = shape
+        if highway is not None:
+            graph.graph[u][v]["highway"] = str(highway)  # road class: live-traffic sampling favours major roads
     return graph
 
 
+def city_key(lat: float, lon: float, radius_m: int, network_type: str = "drive") -> str:
+    """Identifies one downloaded map; also ties recorded traffic snapshots to it."""
+    return f"osm_{lat:.4f}_{lon:.4f}_{radius_m}_{network_type}"
+
+
 def _cache_path(lat: float, lon: float, radius_m: int, network_type: str) -> Path:
-    return CACHE_DIR / f"osm_{lat:.4f}_{lon:.4f}_{radius_m}_{network_type}.graphml"
+    return CACHE_DIR / f"{city_key(lat, lon, radius_m, network_type)}.graphml"
 
 
 def load_city_graph(

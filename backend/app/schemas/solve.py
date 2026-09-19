@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.graph import TrafficInfo
+
 Algorithm = Literal["qpso", "pso", "ga", "nearest_neighbor"]
 
 
@@ -68,6 +70,7 @@ class OptimizeResponse(BaseModel):
     runtime_sec: float
     iterations: int
     warnings: list[str] = []
+    traffic: TrafficInfo  # the traffic conditions this plan was computed under
 
 
 class BenchmarkAlgorithmOut(BaseModel):
@@ -91,3 +94,4 @@ class BenchmarkResponse(BaseModel):
     exact_cost: float | None
     algorithms: list[BenchmarkAlgorithmOut]
     warnings: list[str] = []
+    traffic: TrafficInfo

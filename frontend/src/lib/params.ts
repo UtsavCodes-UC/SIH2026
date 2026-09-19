@@ -20,4 +20,4 @@ export const DEFAULT_PARAMS: SolverParams = {
   seed: 1,
 };
 
-export type Busy = null | "graph" | "optimize" | "benchmark" | "traffic";
+export type Busy = null | "graph" | "optimize" | "benchmark" | "traffic" | "live";

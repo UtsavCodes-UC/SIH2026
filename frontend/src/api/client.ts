@@ -7,6 +7,8 @@ import type {
   OptimizeRequest,
   OptimizeResponse,
   Preset,
+  SnapshotInfo,
+  TrafficStatus,
 } from "./types";
 
 const http = axios.create({
@@ -39,8 +41,16 @@ export const createSyntheticGraph = (body: { n_nodes: number; area_size_km: numb
 export const createCityGraph = (body: { lat: number; lon: number; radius_m: number; place?: string; refresh?: boolean }) =>
   http.post<GraphView>("/graph/city", body).then((r) => r.data);
 
-export const setCongestion = (graphId: string, mode: CongestionMode, seed?: number) =>
-  http.post<GraphView>(`/graph/${graphId}/congestion`, { mode, seed }).then((r) => r.data);
+export const setCongestion = (graphId: string, mode: CongestionMode, seed?: number, snapshotId?: string) =>
+  http.post<GraphView>(`/graph/${graphId}/congestion`, { mode, seed, snapshot_id: snapshotId }).then((r) => r.data);
+
+export const getTrafficStatus = () => http.get<TrafficStatus>("/traffic/status").then((r) => r.data);
+
+export const listSnapshots = (graphId: string) =>
+  http.get<SnapshotInfo[]>(`/graph/${graphId}/traffic/snapshots`).then((r) => r.data);
+
+export const saveSnapshot = (graphId: string) =>
+  http.post<SnapshotInfo>(`/graph/${graphId}/traffic/snapshots`).then((r) => r.data);
 
 export const optimize = (body: OptimizeRequest) => http.post<OptimizeResponse>("/optimize", body).then((r) => r.data);
 

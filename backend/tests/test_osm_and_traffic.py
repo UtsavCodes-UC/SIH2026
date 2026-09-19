@@ -33,6 +33,8 @@ def test_to_traffic_graph_keeps_the_strongly_connected_core_and_quickest_paralle
     assert graph.graph[1][2]["distance_km"] == pytest.approx(0.52)  # the motorway wins on time
     assert graph.graph[1][2]["base_travel_time_min"] == pytest.approx(0.52 / 70.0 * 60.0)
     assert graph.graph[2][3]["base_travel_time_min"] == pytest.approx(1.0 / 50.0 * 60.0)  # maxspeed tag used
+    # road classes are kept: live-traffic sampling measures major roads first
+    assert graph.graph[1][2]["highway"] == "motorway" and graph.graph[2][3]["highway"] == "primary"
 
 
 def test_to_traffic_graph_georeferences_nodes_and_keeps_road_shapes():

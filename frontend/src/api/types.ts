@@ -2,6 +2,33 @@
 
 export type LatLng = [number, number];
 
+export type TrafficKind = "free_flow" | "simulated" | "live" | "recorded";
+
+/** Where the congestion currently on the map came from; always shown next to the map. */
+export interface TrafficInfo {
+  kind: TrafficKind;
+  label: string;
+  provider: string | null;
+  captured_at: string | null; // ISO 8601, UTC
+  roads_measured: number | null; // roads with a real reading; the rest are estimated from neighbours
+  roads_total: number;
+  cached: boolean;
+}
+
+export interface TrafficStatus {
+  provider: string;
+  live_available: boolean; // an API key is configured on the server
+  min_interval_sec: number;
+}
+
+export interface SnapshotInfo {
+  id: string;
+  provider: string | null;
+  captured_at: string | null;
+  roads_measured: number | null;
+  roads_total: number;
+}
+
 export interface GraphSummary {
   graph_id: string;
   source: "synthetic" | "city";
@@ -11,6 +38,7 @@ export interface GraphSummary {
   center: LatLng;
   bounds: [LatLng, LatLng]; // [south, west], [north, east]
   mean_congestion: number;
+  traffic: TrafficInfo;
 }
 
 export interface GraphView {
@@ -26,7 +54,7 @@ export interface Preset {
 }
 
 export type Algorithm = "qpso" | "pso" | "ga" | "nearest_neighbor";
-export type CongestionMode = "random" | "rush_hour" | "clear";
+export type CongestionMode = "random" | "rush_hour" | "clear" | "live" | "snapshot";
 
 export interface ProblemSpec {
   graph_id: string;
@@ -85,6 +113,7 @@ export interface OptimizeResponse {
   runtime_sec: number;
   iterations: number;
   warnings: string[];
+  traffic: TrafficInfo; // the traffic conditions this plan was computed under
 }
 
 export interface BenchmarkAlgorithm {
@@ -108,4 +137,5 @@ export interface BenchmarkResponse {
   exact_cost: number | null;
   algorithms: BenchmarkAlgorithm[];
   warnings: string[];
+  traffic: TrafficInfo;
 }

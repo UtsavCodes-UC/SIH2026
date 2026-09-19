@@ -4,11 +4,23 @@ import {
   createSyntheticGraph,
   errorMessage,
   getPresets,
+  getTrafficStatus,
+  listSnapshots,
   optimize,
   runBenchmark,
+  saveSnapshot,
   setCongestion,
 } from "./api/client";
-import type { BenchmarkResponse, CongestionMode, GraphView, OptimizeResponse, Preset, ProblemSpec } from "./api/types";
+import type {
+  BenchmarkResponse,
+  CongestionMode,
+  GraphView,
+  OptimizeResponse,
+  Preset,
+  ProblemSpec,
+  SnapshotInfo,
+  TrafficStatus,
+} from "./api/types";
 import BenchmarkPanel from "./components/BenchmarkPanel";
 import MapView, { type SelectMode } from "./components/MapView";
 import ResultsPanel from "./components/ResultsPanel";
@@ -21,6 +33,7 @@ const BUSY_LABEL: Record<Exclude<Busy, null>, string> = {
   optimize: "Optimizing routes…",
   benchmark: "Benchmarking every algorithm on this problem…",
   traffic: "Updating traffic…",
+  live: "Fetching live traffic from TomTom (about 25 seconds)…",
 };
 
 export default function App() {
@@ -40,6 +53,9 @@ export default function App() {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"results" | "benchmark">("results");
+  const [trafficStatus, setTrafficStatus] = useState<TrafficStatus | null>(null);
+  const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function run<T>(kind: Exclude<Busy, null>, action: () => Promise<T>): Promise<T | undefined> {
     setBusy(kind);
@@ -60,8 +76,17 @@ export default function App() {
     setDemands(null);
   };
 
+  function refreshSnapshots(view: GraphView) {
+    if (view.summary.source !== "city") {
+      setSnapshots([]);
+      return;
+    }
+    listSnapshots(view.summary.graph_id).then(setSnapshots).catch(() => setSnapshots([]));
+  }
+
   function adoptGraph(view: GraphView) {
     const nextDepot = centralNode(view.nodes);
+    refreshSnapshots(view);
     setGraph(view);
     setDepot(nextDepot);
     setStops(sample(view.nodes.map((n) => n[0]).filter((id) => id !== nextDepot), nStops));
@@ -70,6 +95,7 @@ export default function App() {
 
   useEffect(() => {
     getPresets().then(setPresets).catch(() => undefined);
+    getTrafficStatus().then(setTrafficStatus).catch(() => undefined);
     run("graph", () => createSyntheticGraph({ n_nodes: 80, area_size_km: 8, seed: 1 })).then((view) => view && adoptGraph(view));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -115,12 +141,23 @@ export default function App() {
     }
   }
 
-  async function doTraffic(mode: CongestionMode) {
+  async function doTraffic(mode: CongestionMode, snapshotId?: string) {
     if (!graph) return;
-    const view = await run("traffic", () => setCongestion(graph.summary.graph_id, mode, params.seed));
+    const view = await run(mode === "live" ? "live" : "traffic", () => setCongestion(graph.summary.graph_id, mode, params.seed, snapshotId));
+    if (mode === "live") getTrafficStatus().then(setTrafficStatus).catch(() => undefined); // a key may have been added since the page loaded
     if (!view) return;
     setGraph(view);
     if (autoReoptimize && result) await doOptimize();
+  }
+
+  async function doSaveSnapshot() {
+    if (!graph) return;
+    const saved = await run("traffic", () => saveSnapshot(graph.summary.graph_id));
+    if (saved) {
+      refreshSnapshots(graph);
+      setNotice("Snapshot saved. You can replay it later, even offline.");
+      window.setTimeout(() => setNotice(null), 5000);
+    }
   }
 
   function pickNode(id: number) {
@@ -166,6 +203,9 @@ export default function App() {
         onOptimize={doOptimize}
         onBenchmark={doBenchmark}
         onTraffic={doTraffic}
+        trafficStatus={trafficStatus}
+        snapshots={snapshots}
+        onSaveSnapshot={doSaveSnapshot}
       />
 
       <main className="main">
@@ -187,6 +227,11 @@ export default function App() {
           {busy && graph && (
             <div className="banner busy" role="status">
               <span className="spinner" aria-hidden /> {BUSY_LABEL[busy]}
+            </div>
+          )}
+          {notice && (
+            <div className="banner ok" role="status">
+              {notice}
             </div>
           )}
           {error && (

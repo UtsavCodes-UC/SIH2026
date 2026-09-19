@@ -58,4 +58,5 @@ def benchmark(req: BenchmarkRequest, store: GraphStore = Depends(get_store)) -> 
             exact_cost=report.exact_cost,
             algorithms=algorithms,
             warnings=problem_warnings(routing_problem),
+            traffic=stored.traffic,
         )

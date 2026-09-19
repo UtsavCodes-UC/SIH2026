@@ -27,6 +27,7 @@ def graph_summary(stored: StoredGraph) -> GraphSummary:
         center=stored.center,
         bounds=((min(lats), min(lons)), (max(lats), max(lons))),
         mean_congestion=_mean_congestion(graph),
+        traffic=stored.traffic,
     )
 
 

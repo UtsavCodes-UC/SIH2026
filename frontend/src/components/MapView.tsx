@@ -3,6 +3,7 @@ import { useEffect, useMemo } from "react";
 import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import type { GraphView, LatLng, OptimizeResponse } from "../api/types";
 import { CONGESTION_BUCKETS, bucketIndex, coordinateIndex, vehicleColor } from "../lib/helpers";
+import TrafficBadge from "./TrafficBadge";
 
 export type SelectMode = "off" | "depot" | "stops";
 
@@ -190,6 +191,10 @@ export default function MapView({ graph, depot, stops, demands, result, selectMo
             {label}
           </button>
         ))}
+      </div>
+
+      <div className="map-badge">
+        <TrafficBadge info={graph.summary.traffic} />
       </div>
 
       <div className="map-legend" aria-label="Traffic legend">
