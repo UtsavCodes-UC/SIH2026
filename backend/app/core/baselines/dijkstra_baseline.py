@@ -22,8 +22,12 @@ from app.core.types import OptimizationResult
 from app.core.vrp_formulation import RouteRequest, RoutingProblem
 
 
-def nearest_neighbor_order(problem: RoutingProblem) -> list:
-    """The stops in nearest-neighbour visiting order (routes decode back out of it with `problem.split`)."""
+def nearest_neighbor_order(problem: RoutingProblem, rng=None, k: int = 1) -> list:
+    """The stops in nearest-neighbour visiting order (routes decode back out of it with `problem.split`).
+
+    With `rng` and k > 1 it becomes randomized nearest neighbour: each step picks at random among the k
+    closest stops that fit, which gives many different, still-good tours (used to diversify a swarm).
+    Without them the result is the plain deterministic heuristic."""
     request = problem.request
     remaining = list(dict.fromkeys(request.stops))
     order: list = []
@@ -39,7 +43,11 @@ def nearest_neighbor_order(problem: RoutingProblem) -> list:
             elif load > 0:  # nothing else fits: send this vehicle home, the next one starts at the depot
                 current, load, vehicles_used = request.depot, 0.0, vehicles_used + 1
 
-        next_stop = min(candidates, key=lambda s: problem.leg_time(current, s))
+        if rng is None or k <= 1:
+            next_stop = min(candidates, key=lambda s: problem.leg_time(current, s))
+        else:
+            closest = sorted(candidates, key=lambda s: problem.leg_time(current, s))[:k]
+            next_stop = closest[int(rng.integers(len(closest)))]
         order.append(next_stop)
         remaining.remove(next_stop)
         current = next_stop

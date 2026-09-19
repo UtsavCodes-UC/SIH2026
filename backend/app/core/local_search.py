@@ -79,6 +79,16 @@ def two_opt(order: Sequence, leg_time: Callable[[object, object], float], depot,
     return route[1:-1]
 
 
+def two_opt_order(problem: RoutingProblem, order: Sequence) -> list:
+    """2-opt applied to a visiting order: each vehicle's route on its own, so loads (and therefore the
+    places where the greedy split cuts the order into routes) stay exactly as they were."""
+    depot = problem.request.depot
+    polished: list = []
+    for route in problem.split(order):
+        polished.extend(two_opt(route[1:-1], problem.leg_time, depot))
+    return polished
+
+
 def polish_result(
     problem: RoutingProblem,
     result: OptimizationResult,

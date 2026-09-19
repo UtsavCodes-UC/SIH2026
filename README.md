@@ -12,7 +12,9 @@ several vehicles QPSO's edge over PSO holds at ~20 customers and ties at 50; at 
 shrinks with problem size wins it back against a random-start PSO, but a genetic algorithm is stronger
 than either from a random start, and what really makes 100 customers work is the pipeline around the
 search: a warm start from a nearest-neighbour route plus a polish that moves stops between vans (40%
-lower cost at 100 customers than before; Finding 10). Do not read this as "QPSO scales best".
+lower cost at 100 customers than before; Finding 10). A hybrid QPSO (elite archive, 2-opt, restarts) lands within
+0.1% of OR-Tools on 100-stop single-vehicle tours, but a hybrid PSO built the same way does exactly as well
+(Finding 11). Do not read this as "QPSO scales best".
 
 ## Run it
 
@@ -127,11 +129,11 @@ echoed back in the response, so the same problem can be re-solved after the traf
 
 ```
 backend/
-  app/core/        graph model, VRP formulation + decoder, QPSO, baselines/, 2-opt, traffic, live_traffic, benchmark
+  app/core/        graph model, VRP formulation + decoder, QPSO, hybrid_swarm, baselines/, 2-opt, traffic, live_traffic, benchmark
   app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions
   app/services/    graph store, problem builder, solver dispatch, map/route views, live traffic, snapshots
   app/api/         FastAPI routers          app/schemas/   request/response models
-  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, ...), check_tomtom.py, warm_city_cache.py
+  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, ...), check_tomtom.py, warm_city_cache.py
   tests/           pytest suite (run from backend/: python -m pytest tests/)
   results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
 frontend/          React + TypeScript + Leaflet + Recharts map UI

@@ -20,15 +20,11 @@ therefore the cuts) are unchanged.
 from __future__ import annotations
 
 from app.core.baselines.dijkstra_baseline import nearest_neighbor_order
-from app.core.local_search import two_opt
+from app.core.local_search import two_opt_order
 from app.core.vrp_formulation import RoutingProblem
 
 
 def heuristic_seed_orders(problem: RoutingProblem) -> list[list]:
     """Stop orders to seed a swarm with, best last-resort first: [nearest neighbour, nearest neighbour + 2-opt]."""
-    depot = problem.request.depot
     nearest = nearest_neighbor_order(problem)
-    polished: list = []
-    for route in problem.split(nearest):
-        polished.extend(two_opt(route[1:-1], problem.leg_time, depot))
-    return [nearest, polished]
+    return [nearest, two_opt_order(problem, nearest)]

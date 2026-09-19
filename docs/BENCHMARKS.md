@@ -43,6 +43,14 @@ nearest-neighbour + polish at 100. Do not claim QPSO beats GA or scales better
 than other methods; the supported claim is QPSO's edge over classical PSO at
 about 20 customers, and a hybrid pipeline that handles 100.
 
+Finding 11 then built the architecture "adaptive random-key QPSO + elite archive +
+2-opt + diversity restart + hybrid initialization" and tested it on single-vehicle
+tours up to 200 stops. It beats classical PSO by 17.5% at 100 stops (20 of 20
+instances) and lands within 0.1% of OR-Tools' guided local search, but a hybrid
+**PSO** built from the same components does exactly as well, so the credit belongs
+to the architecture (local search plus kicks and restarts), not to the quantum
+update. On the multi-vehicle problem it adds nothing over warm start + polish.
+
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
 numbers are superseded by Finding 7.**
@@ -330,6 +338,140 @@ Reproduce (from `backend/`; `qpso_b1.0_0.2` is the old fixed schedule):
 python scripts/scale_experiments.py --customers 100 --instances 20 --polish full --variants qpso_b1.0_0.2 qpso ga pso_warm qpso_warm ga_warm --csv results/scaling/scaling_100customers.csv
 python scripts/scale_experiments.py --customers 100 --instances 10 --variants qpso_b1.0_0.2 qpso_b0.5_0.1 qpso_b0.3_0.05 qpso_b0.15_0.02 qpso_b0.05_0.01
 python scripts/scale_experiments.py --list
+```
+
+## Finding 11 — a hybrid architecture for 100+ stops beats classical PSO, but the QPSO update is not what does the work
+
+**The question.** Can a QPSO built as *adaptive random-key QPSO + elite archive + 2-opt
++ diversity restart + hybrid initialization* beat classical PSO at 100 stops, and does
+it keep working on larger tours? Engine: `app/core/hybrid_swarm.py` (each component is a
+switch; the search operator is swappable between QPSO and classical PSO, and with every
+component off it reproduces plain QPSO and plain PSO bit for bit, tested). Experiments:
+`scripts/hybrid_experiments.py`, numbers from `scripts/summarize_hybrid.py`, per-run CSVs
+and the OR-Tools reference tours in `backend/results/hybrid/`.
+
+**What already existed and what is new.**
+
+| Component | Before | Now |
+|---|---|---|
+| Random-key QPSO: quantum update, personal best, permutation decoder | yes | unchanged |
+| Adaptive beta | fixed schedule, scaled with size (Finding 10) | times a multiplier steered by the fraction of particles improving (the 1/5 success rule) |
+| Hybrid initialization | nearest neighbour and its 2-opt (warm start) | plus 25% of the swarm from randomized nearest neighbour + 2-opt |
+| Elite archive | none: one global best | the 8 best distinct tours; each particle's attractor is a random elite, biased to the best |
+| 2-opt | final polish only; whole-swarm version hurt (Finding 3) | on the best 3 not-yet-polished swarm tours, every 10 iterations, written back |
+| Diversity restart | random restarts, opt-in, negative on small problems (Finding 5) | after 40 stalled iterations or when the swarm collapses: the worst 25% restart from a double-bridge-kicked elite or a randomized nearest-neighbour tour, each followed by 2-opt |
+
+The first version polished only the archive's elites and never beat its own seed:
+the elites were seeded 2-opt optima, and swarm-found tours (about 4 times worse) never
+reached the archive. Applying 2-opt to swarm tours and to restarted tours fixed that.
+
+**Setup.** Single vehicle visiting N stops over a directed congested graph (100 to 400
+nodes), 20 instances (seeds 300-319) at 50 and 100 stops and 10 at 150 and 200, 40
+particles x 800 iterations, one algorithm seed. "Cost" is measured after the same final
+2-opt for every method, the only like-for-like comparison (the hybrids' raw result
+already contains the 2-opt they run inside the search). The reference is OR-Tools'
+guided local search (10 / 30 / 45 / 60 s at 50 / 100 / 150 / 200 stops), run in a
+separate environment. It is a strong reference, not a proven optimum: at 100 stops the
+hybrid QPSO was better than it on 8 of 20 instances, worse by up to 6.4% on others and
+better by 12% on one where OR-Tools had evidently not converged.
+
+**1. Yes, it beats classical PSO, decisively.** 100 stops, mean cost after the polish:
+
+| | bare PSO | bare QPSO | GA | nearest neighbour + 2-opt | hybrid PSO | **hybrid QPSO** | OR-Tools |
+|---|---|---|---|---|---|---|---|
+| cost | 1,234 | 1,273 | 1,290 | 1,114 | 1,014 | **1,013** | 1,014 |
+| vs bare PSO | | -3.5% | -4.9% | +9.4% | +17.5% | **+17.5%, 20 wins, 0 losses** | |
+
+**2. But a hybrid PSO ties it: the quantum update is not the reason.** Hybrid QPSO vs
+hybrid PSO, same components (adaptive beta exists only for QPSO), cost after the polish:
+
+| stops | QPSO wins / PSO wins | mean difference (QPSO better is +) | p, QPSO better | p, PSO better |
+|---|---|---|---|---|
+| 50 | 6 / 14 | -0.5% | 0.98 | 0.058 |
+| 100 | 10 / 10 | +0.1% | 0.59 | 0.59 |
+| 150 | 6 / 4 | +1.3% | 0.38 | 0.83 |
+| 200 | 6 / 3 (1 tie) | +0.5% | 0.25 | 0.91 |
+
+No size shows a significant difference in either direction.
+
+**3. What does the work (ablation at 100 stops, QPSO operator).** Cost after the polish,
+20 instances; improvement is over bare PSO (1,234):
+
+| add one component to bare QPSO | cost | improvement | | drop one from the full hybrid | cost | improvement |
+|---|---|---|---|---|---|---|
+| adaptive beta | 1,237 | -0.7% | | without adaptive beta | 1,010 | +17.7% |
+| elite archive + attractor | 1,262 | -2.6% | | without elite attractor | 1,012 | +17.6% |
+| hybrid initialization | 1,079 | +12.3% | | without hybrid initialization | 1,007 | +18.0% |
+| 2-opt on swarm tours | 1,043 | +15.1% | | without 2-opt on swarm tours | 1,012 | +17.6% |
+| diversity restart (kick + 2-opt) | **1,015** | **+17.4%** | | without diversity restart | **1,046** | +14.9% |
+
+The restart alone gets nearly all of the way, and removing it costs the most: kick a
+good tour, 2-opt it, keep it if better is iterated local search, with a swarm alongside.
+Adaptive beta and the elite attractor contribute nothing measurable; hybrid
+initialization helps a bare swarm but is not needed once restarts exist.
+
+**4. Scaling to larger tours.** Mean cost after the polish, as % above the OR-Tools
+reference (lower is better); one run takes this long on an idle machine:
+
+| stops | bare PSO | bare QPSO | GA | nearest neighbour + 2-opt | hybrid PSO | hybrid QPSO | hybrid QPSO run time (bare QPSO) |
+|---|---|---|---|---|---|---|---|
+| 50 | +18.0% | +15.4% | +21.3% | +8.1% | -0.2% | +0.2% | 2.2 s (0.8 s) |
+| 100 | +22.0% | +25.8% | +27.6% | +10.1% | +0.1% | +0.1% | 12.0 s (2.2 s) |
+| 150 | +37.9% | +29.2% | +37.4% | +8.3% | +3.4% | +2.1% | 30.3 s (3.9 s) |
+| 200 | +40.4% | +38.4% | not run | +9.8% | +4.9% | +4.3% | 44.3 s (4.9 s) |
+
+The bare methods fall further behind as tours grow; the hybrids stay within a few
+percent of OR-Tools to 200 stops, where OR-Tools (60 s) is clearly ahead and the
+hybrid QPSO beat it on 1 of 10 instances. About 80% of the hybrid's time is 2-opt
+in pure Python (profiled).
+
+**5. The update rule on its own.** Bare QPSO (with Finding 10's size-aware jump) vs bare
+PSO, QPSO win / tie / loss with mean improvement:
+
+| stops | raw | after the same 2-opt |
+|---|---|---|
+| 50 | 18/0/2, +20.5%, p = 0.0002 | 12/0/8, +1.3%, p = 0.25 |
+| 100 | 15/0/5, +8.4%, p = 0.021 | 9/0/11, -3.5%, PSO better in 11, not significant |
+| 150 | 10/0/0, +14.3%, p = 0.001 | 9/0/1, +5.9%, p = 0.011 |
+| 200 | 10/0/0, +16.2%, p = 0.001 | 5/0/5, +0.3%, p = 0.62 |
+
+So the raw edge over classical PSO holds at every size, as in Finding 7, and 2-opt
+removes it or leaves it inconsistent.
+
+**6. On the multi-vehicle problem the hybrid adds nothing.** 100 customers, capacity 100,
+fleet for at most 85% utilization, seeds 500-519, cost after the full polish (2-opt plus
+moving stops between vans): warm PSO 3,181, warm QPSO 3,187, **hybrid QPSO 3,192**,
+hybrid PSO 3,183, nearest neighbour + polish 3,201 (Finding 10's numbers, reproduced).
+With about 16 vans a route has only 6 stops, so in-search 2-opt has almost nothing to
+fix, and the gains come from moving stops between vans, which the final polish already
+gives every method (it cannot run inside the search because a route set does not always
+decode back from its concatenation).
+
+**What this supports, and what it does not.**
+
+- Supported: the architecture takes a 100-stop single-vehicle tour from 22% above the
+  reference (bare PSO) to within 0.1%, and stays within 4.3% at 200 stops.
+- Supported: with the size-aware jump, bare QPSO beats bare PSO on raw cost at every
+  size from 50 to 200 stops.
+- Not supported: that the quantum update is what makes the hybrid work. A hybrid PSO with
+  the same components is indistinguishable from it.
+- Not supported: any benefit for the multi-vehicle problem in its current formulation.
+
+**Caveats.** 10-20 instances, one algorithm seed, synthetic graphs. The hybrids' 2-opt is
+plain 2-opt (no Or-opt or 3-opt), and their budget is fixed at 800 iterations: on some
+instances they are still improving at the end. The OR-Tools time limits are short.
+Adaptive beta and the elite attractor were not tuned. The engine is a library and
+benchmark tool; it is not yet selectable in the API or UI. A vectorized 2-opt was
+tried and dropped: correct, but only 1.4-2.5x faster on the tours that matter.
+
+Reproduce (from `backend/`; OR-Tools reference tours were made in a separate virtual
+environment, so the project's pinned one is untouched):
+
+```
+python scripts/hybrid_experiments.py --problem tsp --stops 100 --instances 20 --variants pso qpso h_qpso h_pso ga pso_warm qpso_warm --csv results/hybrid/tsp100.csv --best-known results/hybrid/tsp100_best_known.csv
+python scripts/hybrid_experiments.py --problem tsp --stops 100 --instances 20 --variants h_qpso a_init a_beta a_elite a_ls a_restart d_init d_beta d_elite d_ls d_restart --csv results/hybrid/tsp100_ablation.csv
+python scripts/hybrid_experiments.py --problem cvrp --stops 100 --instances 20 --variants pso_warm qpso_warm h_qpso h_pso ga --reference pso_warm
+python scripts/summarize_hybrid.py
 ```
 
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)
