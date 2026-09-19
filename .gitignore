@@ -20,3 +20,12 @@ dist/
 Thumbs.db
 
 docs/ROADMAP.md
+
+# Downloaded OpenStreetMap data (large, ODbL-licensed; re-create with backend/scripts/warm_city_cache.py)
+backend/data/cache/
+
+# Local dev-server config (absolute paths of one machine)
+.claude/
+
+# TypeScript build artifact
+*.tsbuildinfo
