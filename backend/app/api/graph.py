@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from dataclasses import asdict
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.live_traffic import count_roads
 from app.core.traffic import apply_random_traffic, apply_rush_hour, clear_traffic
-from app.data.osm_loader import PRESETS, UnusablePlaceError, city_key, geocode, load_city_graph
+from app.data.osm_loader import PRESETS, UnusablePlaceError, city_key, geocode, is_preset, load_city_graph, remember_place
+from app.data.place_search import PhotonPlaceSearch, get_place_search, suggest
 from app.data.synthetic_graph_generator import generate_synthetic_graph, georeference
 from app.data.tomtom import TomTomFlowProvider
 from app.schemas.graph import (
     CityGraphRequest,
     CongestionRequest,
     GraphView,
+    PlaceSearchResponse,
     Preset,
     SyntheticGraphRequest,
     TrafficInfo,
@@ -40,6 +44,18 @@ def presets() -> list[dict]:
     return PRESETS
 
 
+@router.get("/places", response_model=PlaceSearchResponse)
+def search_places(
+    q: str = Query("", max_length=100, description="what the user has typed so far"),
+    lat: float | None = Query(None, ge=-90, le=90, description="with lon: prefer results near this point"),
+    lon: float | None = Query(None, ge=-180, le=180),
+    online: PhotonPlaceSearch | None = Depends(get_place_search),
+) -> PlaceSearchResponse:
+    """Place-name suggestions for a search-as-you-type box: known places first, then Photon (OpenStreetMap data)."""
+    suggestions, note = suggest(q, online, near=(lat, lon) if lat is not None and lon is not None else None)
+    return PlaceSearchResponse(suggestions=[asdict(s) for s in suggestions], note=note)
+
+
 @router.post("/synthetic", response_model=GraphView)
 def create_synthetic(req: SyntheticGraphRequest, store: GraphStore = Depends(get_store)) -> GraphView:
     graph = generate_synthetic_graph(
@@ -64,6 +80,8 @@ def create_city(req: CityGraphRequest, store: GraphStore = Depends(get_store)) -
             f"Found the place ({lat:.4f}, {lon:.4f}) but there are only {graph.node_count} drivable intersections within "
             f"{req.radius_m} m. Try a larger radius or a more specific place."
         )
+    if req.place and not geocoded and not is_preset(lat, lon):
+        remember_place(req.place, lat, lon)  # a picked suggestion: suggest it again later, even offline
     # A geocoded place shows where the search put the map, so a wrong "Springfield" is easy to spot.
     name = f"{req.place} ({lat:.4f}, {lon:.4f})" if geocoded else req.place or f"({lat:.4f}, {lon:.4f})"
     stored = store.add(graph, "city", f"{name}, {req.radius_m} m radius", (lat, lon), key=city_key(lat, lon, req.radius_m))

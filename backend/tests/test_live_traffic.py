@@ -5,7 +5,7 @@ import urllib.error
 import pytest
 
 from app import config
-from app.data import tomtom as tomtom_module
+from app.data import http as http_module
 from app.core.graph_model import TrafficGraph
 from app.core.live_traffic import (
     FlowSample,
@@ -206,7 +206,7 @@ def test_tomtom_reading_is_parsed_and_the_request_matches_the_documented_api():
 
 def test_the_real_connection_always_verifies_certificates():
     # A certificate error must never be "fixed" by switching verification off: the API key travels over this connection.
-    context = tomtom_module._tls_context()
+    context = http_module.tls_context()
     assert context.verify_mode == ssl.CERT_REQUIRED
     assert context.check_hostname is True
 

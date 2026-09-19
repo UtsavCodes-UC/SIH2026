@@ -56,3 +56,9 @@ def live_sample_count() -> int:
 def live_min_interval_sec() -> float:
     """Re-use the last live reading for this long instead of spending more of the free daily quota."""
     return _number("LIVE_TRAFFIC_MIN_INTERVAL_SEC", 300.0)
+
+
+def place_search_url() -> str | None:
+    """Photon-compatible endpoint for place-name suggestions; `off` disables the online list."""
+    url = (get_setting("PLACE_SEARCH_URL", "https://photon.komoot.io/api/") or "").strip()
+    return None if url.lower() in {"", "off", "none", "false"} else url

@@ -53,6 +53,22 @@ export interface Preset {
   lon: number;
 }
 
+/** One entry of the place-search dropdown. `label` is what the box is filled with and the map is named after. */
+export interface PlaceSuggestion {
+  title: string;
+  detail: string;
+  label: string;
+  kind: string;
+  lat: number;
+  lon: number;
+  source: "preset" | "recent" | "online";
+}
+
+export interface PlaceSearchResult {
+  suggestions: PlaceSuggestion[];
+  note: string | null; // set when the online list is missing
+}
+
 export type Algorithm = "qpso" | "pso" | "ga" | "nearest_neighbor";
 export type CongestionMode = "random" | "rush_hour" | "clear" | "live" | "snapshot";
 

@@ -6,6 +6,7 @@ import type {
   GraphView,
   OptimizeRequest,
   OptimizeResponse,
+  PlaceSearchResult,
   Preset,
   SnapshotInfo,
   TrafficStatus,
@@ -34,6 +35,10 @@ export function errorMessage(error: unknown): string {
 }
 
 export const getPresets = () => http.get<Preset[]>("/graph/presets").then((r) => r.data);
+
+/** Suggestions for a place name typed so far. Pass a signal so a newer keystroke can cancel the old request. */
+export const searchPlaces = (q: string, signal?: AbortSignal, near?: { lat: number; lon: number } | null) =>
+  http.get<PlaceSearchResult>("/graph/places", { params: { q, lat: near?.lat, lon: near?.lon }, signal, timeout: 15_000 }).then((r) => r.data);
 
 export const createSyntheticGraph = (body: { n_nodes: number; area_size_km: number; seed: number }) =>
   http.post<GraphView>("/graph/synthetic", body).then((r) => r.data);

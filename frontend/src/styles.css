@@ -626,3 +626,96 @@ code {
   border-radius: 4px;
   padding: 1px 4px;
 }
+
+/* ---------- place search (autocomplete) ---------- */
+.field {
+  margin-bottom: 8px;
+}
+
+.field > label {
+  margin-bottom: 3px;
+}
+
+.combo {
+  position: relative;
+}
+
+.combo-popup {
+  position: absolute;
+  z-index: 700;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.combo-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 290px;
+  overflow-y: auto;
+}
+
+.combo-option {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 8px;
+  align-items: baseline;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.combo-active {
+  background: var(--accent-soft);
+}
+
+.combo-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.combo-title mark {
+  background: transparent;
+  color: var(--accent);
+}
+
+.combo-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.combo-detail {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.combo-foot {
+  padding: 6px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.combo-list:empty + .combo-foot {
+  border-top: 0;
+}
+
+.hint.picked {
+  color: var(--ok);
+  margin: 4px 0 0;
+}

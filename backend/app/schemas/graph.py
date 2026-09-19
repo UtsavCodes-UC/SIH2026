@@ -36,6 +36,21 @@ class CityGraphRequest(BaseModel):
         return self
 
 
+class PlaceSuggestion(BaseModel):
+    title: str
+    detail: str
+    label: str  # what to fill into the box and name the map after
+    kind: str
+    lat: float
+    lon: float
+    source: Literal["preset", "recent", "online"]
+
+
+class PlaceSearchResponse(BaseModel):
+    suggestions: list[PlaceSuggestion]
+    note: str | None = None  # set when the online list is missing, with what the user can still do
+
+
 class CongestionRequest(BaseModel):
     """`live` reads real traffic from the provider (real-city networks only); `snapshot` replays a
     recording made earlier from live data; the others are simulated."""

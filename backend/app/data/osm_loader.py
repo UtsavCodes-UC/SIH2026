@@ -168,13 +168,39 @@ def _read_geocode_cache() -> dict[str, list[float]]:
         return {}
 
 
+def _place_key(place: str) -> str:
+    return " ".join(place.lower().split())
+
+
+def remembered_places() -> dict[str, tuple[float, float]]:
+    """Places looked up or loaded before (lower-cased name -> (lat, lon)); they work without the internet."""
+    places = {}
+    for key, value in _read_geocode_cache().items():
+        if isinstance(value, list) and len(value) == 2:
+            places[key] = (float(value[0]), float(value[1]))
+    return places
+
+
+def remember_place(place: str, lat: float, lon: float) -> None:
+    cache = _read_geocode_cache()
+    cache[_place_key(place)] = [float(lat), float(lon)]
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _geocode_cache_path().write_text(json.dumps(cache, indent=1), encoding="utf-8")
+    except OSError:
+        pass  # a read-only disk only costs the offline shortcut
+
+
+def is_preset(lat: float, lon: float) -> bool:
+    return any(abs(p["lat"] - lat) < 0.0005 and abs(p["lon"] - lon) < 0.0005 for p in PRESETS)
+
+
 def geocode(place: str) -> tuple[float, float]:
     """Place name -> (lat, lon) via Nominatim. Answers are remembered on disk, so a place that was
     typed once loads again later without the internet (its map is cached the same way)."""
-    key = " ".join(place.lower().split())
-    cached = _read_geocode_cache().get(key)
-    if cached and len(cached) == 2:
-        return float(cached[0]), float(cached[1])
+    cached = remembered_places().get(_place_key(place))
+    if cached:
+        return cached
 
     import osmnx as ox
     from osmnx._errors import InsufficientResponseError
@@ -193,11 +219,5 @@ def geocode(place: str) -> tuple[float, float]:
             "Check the internet connection, or pick one of the ready-made places."
         ) from exc
 
-    cache = _read_geocode_cache()
-    cache[key] = [float(lat), float(lon)]
-    try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        _geocode_cache_path().write_text(json.dumps(cache, indent=1), encoding="utf-8")
-    except OSError:
-        pass  # a read-only disk only costs the offline shortcut
+    remember_place(place, lat, lon)
     return float(lat), float(lon)

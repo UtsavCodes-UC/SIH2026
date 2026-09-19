@@ -41,9 +41,10 @@ cd backend && python scripts/warm_city_cache.py
 ## Using the UI
 
 1. **Road network** — generate a synthetic network, or load a real place: pick one of the four presets,
-   or choose *Search for another place…* and type any name OpenStreetMap knows (add the city, e.g.
-   "Indiranagar, Bengaluru"). The map is centred on the spot the search finds and the summary shows its
-   coordinates. A place you typed once is remembered, so it loads again later without the internet.
+   or choose *Search for another place…* and start typing: suggestions appear as you type (arrow keys +
+   Enter, or click), so the spelling is right and the map lands exactly on the spot you picked. Enter
+   without picking searches for exactly what you typed. A place you loaded once is remembered and
+   suggested again later, even without the internet.
 2. **Delivery problem** — draw random stops, or click the map ("set depot" / "toggle stops");
    set the fleet size (blank = auto) and vehicle capacity.
 3. **Solver** — pick QPSO / PSO / GA / nearest neighbour and press *Optimize routes*: routes are drawn
@@ -53,6 +54,18 @@ cd backend && python scripts/warm_city_cache.py
    automatically, so you can watch routes detour around a jam. On a real city, *Fetch live traffic*
    loads real TomTom readings instead (see below). A badge on the map and on every result always says
    where the congestion came from: LIVE, RECORDED, SIMULATED or FREE FLOW.
+
+## Place suggestions
+
+The suggestions come from [Photon](https://photon.komoot.io), a search-as-you-type service built on
+OpenStreetMap data (© OpenStreetMap contributors). OpenStreetMap's own Nominatim server is used only for
+the final exact lookup, because its usage policy forbids auto-complete requests. What you type is sent
+to Photon after a 300 ms pause and cached for an hour; it is a free shared service, so for heavy use
+run your own Photon and set `PLACE_SEARCH_URL` in `backend/.env`, or set it to `off` to keep only the
+ready-made and remembered places. If Photon is unreachable the box still lists those places, says so,
+and Enter still searches for what you typed. When a real city is loaded, results near it rank first
+(a typo like "indiranagr" finds Bengaluru's Indiranagar before other cities'), without hiding places
+elsewhere.
 
 ## Live traffic (TomTom)
 
@@ -93,6 +106,7 @@ Interactive docs at http://localhost:8000/docs.
 |---|---|
 | `POST /api/graph/synthetic` · `POST /api/graph/city` | create a network (a city from `place` or `lat`/`lon` + `radius_m`); returns nodes, roads and a `graph_id`. An unknown place is a 422 with advice, a failed lookup a 503 |
 | `GET /api/graph/presets` · `GET /api/graph/{id}` | ready-made places · read a network back |
+| `GET /api/graph/places?q=` | place-name suggestions (optional `lat`/`lon` to prefer results near a map): presets and remembered places first, then Photon |
 | `POST /api/graph/{id}/congestion` | `random` / `rush_hour` / `clear` (simulated), `live` (TomTom, real cities), `snapshot` (replay a recording): the dynamic weight update |
 | `GET /api/traffic/status` | whether a TomTom key is configured (never returns the key) |
 | `GET` · `POST /api/graph/{id}/traffic/snapshots` | list recorded traffic for a map · record the current real traffic |
@@ -107,7 +121,7 @@ echoed back in the response, so the same problem can be re-solved after the traf
 ```
 backend/
   app/core/        graph model, VRP formulation + decoder, QPSO, baselines/, 2-opt, traffic, live_traffic, benchmark
-  app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter
+  app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions
   app/services/    graph store, problem builder, solver dispatch, map/route views, live traffic, snapshots
   app/api/         FastAPI routers          app/schemas/   request/response models
   scripts/         benchmark CLIs (compare_qpso_vs_pso.py, ...), check_tomtom.py, warm_city_cache.py

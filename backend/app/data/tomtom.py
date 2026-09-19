@@ -18,42 +18,17 @@ Notes
 
 from __future__ import annotations
 
-import functools
 import json
-import ssl
 import threading
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 from app.core.live_traffic import FlowSample
+from app.data.http import open_url
 
 BASE_URL = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/{zoom}/json"
-
-
-@functools.lru_cache(maxsize=1)
-def _tls_context() -> ssl.SSLContext:
-    """The OS trust store plus the Mozilla roots that ship with certifi.
-
-    Python on Windows reads only the roots already installed in the OS store, and Windows installs some
-    lazily, so a fresh machine can fail with "self signed certificate in certificate chain" against a
-    perfectly valid site (seen once against api.tomtom.com; the next call worked). Adding certifi's bundle
-    makes the call independent of that. Verification stays on.
-    """
-    context = ssl.create_default_context()
-    try:
-        import certifi
-
-        context.load_verify_locations(cafile=certifi.where())
-    except (ImportError, OSError):
-        pass
-    return context
-
-
-def _default_urlopen(url: str, timeout: float | None = None):
-    return urllib.request.urlopen(url, timeout=timeout, context=_tls_context())
 
 
 class TrafficProviderError(RuntimeError):
@@ -70,7 +45,7 @@ class TomTomFlowProvider:
         max_qps: float = 5.0,
         timeout: float = 10.0,
         workers: int = 4,
-        urlopen=_default_urlopen,
+        urlopen=open_url,
         sleep=time.sleep,
         clock=time.monotonic,
     ):

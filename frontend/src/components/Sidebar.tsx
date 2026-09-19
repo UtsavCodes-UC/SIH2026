@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import type { Algorithm, CongestionMode, GraphView, Preset, SnapshotInfo, TrafficStatus } from "../api/types";
+import type { Algorithm, CongestionMode, GraphView, PlaceSuggestion, Preset, SnapshotInfo, TrafficStatus } from "../api/types";
 import { ALGORITHM_LABELS, formatCaptured } from "../lib/helpers";
 import type { Busy, SolverParams } from "../lib/params";
+import PlaceSearchBox from "./PlaceSearchBox";
 
 interface Props {
   graph: GraphView | null;
@@ -53,6 +54,7 @@ export default function Sidebar(props: Props) {
   const [presetIndex, setPresetIndex] = useState(0);
   const [radius, setRadius] = useState(1200);
   const [customPlace, setCustomPlace] = useState("");
+  const [chosen, setChosen] = useState<PlaceSuggestion | null>(null); // the suggestion the box text still stands for
   const idle = busy === null;
   const isCity = graph?.summary.source === "city";
   const trafficKind = graph?.summary.traffic.kind;
@@ -68,8 +70,10 @@ export default function Sidebar(props: Props) {
 
   function loadCity() {
     if (!canLoad) return;
-    if (searching) {
-      props.onLoadCity({ place: typed, radius_m: radius });
+    if (searching && chosen && chosen.label === typed) {
+      props.onLoadCity({ place: chosen.label, lat: chosen.lat, lon: chosen.lon, radius_m: radius }); // exactly the spot that was picked
+    } else if (searching) {
+      props.onLoadCity({ place: typed, radius_m: radius }); // free text: the server looks it up
     } else {
       const p = presets[presetIndex];
       props.onLoadCity({ place: p.name, lat: p.lat, lon: p.lon, radius_m: radius });
@@ -118,18 +122,28 @@ export default function Sidebar(props: Props) {
               </select>
             </label>
             {searching && (
-              <label>
-                Place name
-                <input
-                  type="text"
+              <div className="field">
+                <label htmlFor="place-search">Place name</label>
+                <PlaceSearchBox
+                  id="place-search"
                   value={customPlace}
-                  maxLength={200}
-                  placeholder="e.g. Koramangala, Bengaluru"
-                  autoFocus
-                  onChange={(e) => setCustomPlace(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && loadCity()}
+                  onChange={(text) => {
+                    setCustomPlace(text);
+                    if (chosen && text.trim() !== chosen.label) setChosen(null);
+                  }}
+                  onPick={(place) => {
+                    setChosen(place);
+                    setCustomPlace(place.label);
+                  }}
+                  onSubmit={loadCity}
+                  near={isCity && graph ? { lat: graph.summary.center[0], lon: graph.summary.center[1] } : null}
                 />
-              </label>
+                {chosen && chosen.label === typed && (
+                  <p className="hint picked">
+                    ✓ Picked from the suggestions ({chosen.lat.toFixed(4)}, {chosen.lon.toFixed(4)}). Radius below, then Load.
+                  </p>
+                )}
+              </div>
             )}
             <label>Radius (m){numberInput(radius, setRadius, 300, 4000, 100)}</label>
             <button className="btn" disabled={!canLoad} onClick={loadCity}>
@@ -137,7 +151,7 @@ export default function Sidebar(props: Props) {
             </button>
             <p className="hint">
               {searching
-                ? "Any place OpenStreetMap knows, anywhere in the world. Add the city (\"Indiranagar, Bengaluru\") so the search picks the right one; the map is centred on the spot it finds, and the graph summary below shows the coordinates. "
+                ? "Start typing and pick a suggestion, so the spelling is right and the map lands exactly there. Any place OpenStreetMap knows, anywhere in the world. Or press Enter to search for exactly what you typed. "
                 : ""}
               The first load of a place downloads it from OpenStreetMap (up to a couple of minutes); later loads are instant.
             </p>
