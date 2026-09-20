@@ -46,8 +46,8 @@ about 20 customers, and a hybrid pipeline that handles 100.
 Finding 11 then built the architecture "adaptive random-key QPSO + elite archive +
 2-opt + diversity restart + hybrid initialization" and tested it on single-vehicle
 tours up to 200 stops. It beats classical PSO by 17.5% at 100 stops (20 of 20
-instances) and lands within 0.1% of OR-Tools' guided local search, but a hybrid
-**PSO** built from the same components does exactly as well, so the credit belongs
+instances) and lands within about 3% of OR-Tools' guided local search (1% at 50
+stops, 6% at 200), but a hybrid **PSO** built from the same components does exactly as well, so the credit belongs
 to the architecture (local search plus kicks and restarts), not to the quantum
 update. On the multi-vehicle problem it adds nothing over warm start + polish.
 
@@ -55,8 +55,17 @@ Finding 12 then tested the most-suggested fix for the multi-vehicle problem, an
 optimal Split decoder in place of the greedy cut. It is worth about 1% for every
 method (including plain nearest neighbour), which is the size of the noise from
 changing the local search's starting point, and it is 30-80x slower per evaluation.
-Against a new OR-Tools capacitated reference (60 s), our multi-vehicle pipelines are
-still 4-6% above it whichever decoder is used, so the remaining gap is not the decoder.
+Against an OR-Tools capacitated reference (60 s), our multi-vehicle pipelines are
+still 6-9% above it whichever decoder is used, so the remaining gap is not the decoder.
+
+**Correction to the OR-Tools references.** Findings 11 and 12 were first written against
+references produced with Python cost callbacks, which slow OR-Tools' search badly.
+Re-running them with the cost matrix handed over as data (`scripts/ortools_reference.py`)
+made every reference better, by 1.1-3.3% on the tours and 2.4% on the capacitated
+instances, so the gaps below use the corrected ones. The original text said the hybrid
+QPSO was within 0.1% of OR-Tools at 100 stops and the multi-vehicle pipelines 4-6% above
+it; corrected, they are 3.2% and 6-9%. The conclusions about which components matter do
+not change, but "matches OR-Tools" does not survive.
 
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
@@ -377,17 +386,19 @@ nodes), 20 instances (seeds 300-319) at 50 and 100 stops and 10 at 150 and 200, 
 particles x 800 iterations, one algorithm seed. "Cost" is measured after the same final
 2-opt for every method, the only like-for-like comparison (the hybrids' raw result
 already contains the 2-opt they run inside the search). The reference is OR-Tools'
-guided local search (10 / 30 / 45 / 60 s at 50 / 100 / 150 / 200 stops), run in a
-separate environment. It is a strong reference, not a proven optimum: at 100 stops the
-hybrid QPSO was better than it on 8 of 20 instances, worse by up to 6.4% on others and
-better by 12% on one where OR-Tools had evidently not converged.
+guided local search (10 / 30 / 45 / 60 s at 50 / 100 / 150 / 200 stops) with the cost
+matrix handed over as data (`scripts/ortools_reference.py`), run in a separate
+environment. It is a strong reference, not a proven optimum, and it is ahead of every
+method here: the hybrid QPSO beat it on 1 of 20 instances at 100 stops and on none at
+50, 150 or 200.
 
 **1. Yes, it beats classical PSO, decisively.** 100 stops, mean cost after the polish:
 
 | | bare PSO | bare QPSO | GA | nearest neighbour + 2-opt | hybrid PSO | **hybrid QPSO** | OR-Tools |
 |---|---|---|---|---|---|---|---|
-| cost | 1,234 | 1,273 | 1,290 | 1,114 | 1,014 | **1,013** | 1,014 |
+| cost | 1,234 | 1,273 | 1,290 | 1,114 | 1,014 | **1,013** | 981 |
 | vs bare PSO | | -3.5% | -4.9% | +9.4% | +17.5% | **+17.5%, 20 wins, 0 losses** | |
+| above OR-Tools | +25.8% | +29.7% | +31.6% | +13.6% | +3.3% | **+3.2%** | |
 
 **2. But a hybrid PSO ties it: the quantum update is not the reason.** Hybrid QPSO vs
 hybrid PSO, same components (adaptive beta exists only for QPSO), cost after the polish:
@@ -422,15 +433,15 @@ reference (lower is better); one run takes this long on an idle machine:
 
 | stops | bare PSO | bare QPSO | GA | nearest neighbour + 2-opt | hybrid PSO | hybrid QPSO | hybrid QPSO run time (bare QPSO) |
 |---|---|---|---|---|---|---|---|
-| 50 | +18.0% | +15.4% | +21.3% | +8.1% | -0.2% | +0.2% | 2.2 s (0.8 s) |
-| 100 | +22.0% | +25.8% | +27.6% | +10.1% | +0.1% | +0.1% | 12.0 s (2.2 s) |
-| 150 | +37.9% | +29.2% | +37.4% | +8.3% | +3.4% | +2.1% | 30.3 s (3.9 s) |
-| 200 | +40.4% | +38.4% | not run | +9.8% | +4.9% | +4.3% | 44.3 s (4.9 s) |
+| 50 | +19.2% | +16.6% | +22.6% | +9.2% | +0.9% | +1.3% | 2.2 s (0.8 s) |
+| 100 | +25.8% | +29.7% | +31.6% | +13.6% | +3.3% | +3.2% | 12.0 s (2.2 s) |
+| 150 | +42.4% | +33.5% | +42.3% | +12.1% | +7.0% | +5.6% | 30.3 s (3.9 s) |
+| 200 | +43.2% | +41.1% | not run | +12.1% | +7.0% | +6.4% | 44.3 s (4.9 s) |
 
-The bare methods fall further behind as tours grow; the hybrids stay within a few
-percent of OR-Tools to 200 stops, where OR-Tools (60 s) is clearly ahead and the
-hybrid QPSO beat it on 1 of 10 instances. About 80% of the hybrid's time is 2-opt
-in pure Python (profiled).
+The bare methods fall further behind as tours grow (to about 40% above at 200 stops);
+the hybrids stay within 1-7% of OR-Tools from 50 to 200 stops, with the gap widening
+as tours grow, and nearest neighbour + 2-opt sits at 9-14% above throughout. About 80%
+of the hybrid's time is 2-opt in pure Python (profiled).
 
 **5. The update rule on its own.** Bare QPSO (with Finding 10's size-aware jump) vs bare
 PSO, QPSO win / tie / loss with mean improvement:
@@ -456,8 +467,9 @@ decode back from its concatenation).
 
 **What this supports, and what it does not.**
 
-- Supported: the architecture takes a 100-stop single-vehicle tour from 22% above the
-  reference (bare PSO) to within 0.1%, and stays within 4.3% at 200 stops.
+- Supported: the architecture takes a 100-stop single-vehicle tour from 26% above the
+  reference (bare PSO) to 3.2% above, and stays within 6.4% at 200 stops. It does not
+  match OR-Tools: the gap grows from 1% at 50 stops to 6% at 200.
 - Supported: with the size-aware jump, bare QPSO beats bare PSO on raw cost at every
   size from 50 to 200 stops.
 - Not supported: that the quantum update is what makes the hybrid work. A hybrid PSO with
@@ -466,7 +478,8 @@ decode back from its concatenation).
 
 **Caveats.** 10-20 instances, one algorithm seed, synthetic graphs. The hybrids' 2-opt is
 plain 2-opt (no Or-opt or 3-opt), and their budget is fixed at 800 iterations: on some
-instances they are still improving at the end. The OR-Tools time limits are short.
+instances they are still improving at the end. The OR-Tools time limits are short (it
+would only improve with more time).
 Adaptive beta and the elite attractor were not tuned. The engine is a library and
 benchmark tool; it is not yet selectable in the API or UI. A vectorized 2-opt was
 tried and dropped: correct, but only 1.4-2.5x faster on the tours that matter.
@@ -498,20 +511,21 @@ route set (for example the output of `improve_routes`) and splitting optimally n
 routes did. That last property is the one greedy decoding lacks.
 
 **Reference.** OR-Tools' capacitated routing with guided local search, 60 s per instance, same fleet and
-capacity, run in a separate environment (`backend/results/hybrid/cvrp100_best_known.csv`): mean **3,009.5** on
-the 20 instances of Findings 10-11 (100 customers, seeds 500-519). It is a strong reference, not a proven optimum.
+capacity, cost matrix and demands handed over as data, run in a separate environment
+(`scripts/ortools_reference.py`, `backend/results/hybrid/cvrp100_best_known.csv`): mean **2,937.9** on the 20
+instances of Findings 10-11 (100 customers, seeds 500-519). It is a strong reference, not a proven optimum.
 
 **1. Same method, greedy vs optimal decoder** (cost after the same final polish; optimal wins / ties / losses
 per instance; sign test on the optimal being better):
 
 | method | greedy | optimal | change | optimal wins/ties/losses | p | above OR-Tools, optimal / greedy |
 |---|---|---|---|---|---|---|
-| nearest neighbour + polish | 3,201 | 3,161 | +1.3% | 9/7/4 | 0.13 | +5.1% / +6.3% |
-| warm PSO | 3,181 | 3,148 | +1.0% | 11/0/9 | 0.41 | +4.7% / +5.8% |
-| warm QPSO | 3,187 | 3,156 | +1.0% | 11/2/7 | 0.24 | +4.9% / +5.9% |
-| warm GA | 3,148 | 3,120 | +0.9% | 10/0/10 | 0.59 | +3.8% / +4.7% |
-| hybrid QPSO | 3,192 | 3,146 | +1.4% | 13/3/4 | 0.025 | +4.6% / +6.1% |
-| hybrid PSO | 3,183 | 3,148 | +1.1% | 11/3/6 | 0.17 | +4.6% / +5.7% |
+| nearest neighbour + polish | 3,201 | 3,161 | +1.3% | 9/7/4 | 0.13 | +7.7% / +8.9% |
+| warm PSO | 3,181 | 3,148 | +1.0% | 11/0/9 | 0.41 | +7.3% / +8.4% |
+| warm QPSO | 3,187 | 3,156 | +1.0% | 11/2/7 | 0.24 | +7.5% / +8.5% |
+| warm GA | 3,148 | 3,120 | +0.9% | 10/0/10 | 0.59 | +6.3% / +7.2% |
+| hybrid QPSO | 3,192 | 3,146 | +1.4% | 13/3/4 | 0.025 | +7.2% / +8.7% |
+| hybrid PSO | 3,183 | 3,148 | +1.1% | 11/3/6 | 0.17 | +7.2% / +8.3% |
 
 Every method gains about 1%, but for five of the six the gain is not statistically clear on 20 instances.
 The three swarm methods stay tied with each other under either decoder (warm QPSO vs warm PSO with the optimal
@@ -543,7 +557,7 @@ not optimized (restricting each layer to the band of feasible route counts could
 **What this supports, and what it does not.**
 
 - The greedy decoder is not what holds the multi-vehicle search back. Whichever decoder is used, the
-  pipelines end 3.8-5.1% above OR-Tools' 60 s solution (4.7-6.3% with greedy), so there is real headroom and it is
+  pipelines end 6.3-7.7% above OR-Tools' 60 s solution (7.2-8.9% with greedy), so there is real headroom and it is
   elsewhere: OR-Tools searches with a much richer set of inter-route moves and guided local search.
 - The decoder's real value is the write-back property, which lets inter-route local search run inside the
   swarm loop. Whether that is worth its cost is Finding 13's question.
