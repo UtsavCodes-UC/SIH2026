@@ -8,6 +8,8 @@ import type {
   OptimizeResponse,
   PlaceSearchResult,
   Preset,
+  ShortestPathRequest,
+  ShortestPathResponse,
   SnapshotInfo,
   TrafficStatus,
 } from "./types";
@@ -61,3 +63,5 @@ export const optimize = (body: OptimizeRequest) => http.post<OptimizeResponse>("
 
 export const runBenchmark = (body: BenchmarkRequest) =>
   http.post<BenchmarkResponse>("/benchmark", body).then((r) => r.data);
+
+export const shortestPath = (body: ShortestPathRequest) => http.post<ShortestPathResponse>("/shortest-path", body).then((r) => r.data);

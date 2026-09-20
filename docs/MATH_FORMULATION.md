@@ -12,7 +12,8 @@ van can carry at most Q units. Driving times come from a road network whose trav
 set of routes that minimizes the **total driving time of all vans**, or, if asked, a weighted blend of driving time, distance
 and congestion delay. With one van this is the travelling-salesman problem;
 with several it is the capacitated vehicle routing problem (CVRP). Both are NP-hard, so the code searches heuristically
-(QPSO, PSO, GA, a route search) and, for very small single-van cases, exactly (Held-Karp).
+(QPSO, PSO, GA, a route search) and, for very small single-van cases, exactly (Held-Karp). A second, much easier problem, the quickest
+route between two places, is solved exactly by Dijkstra and also searched for by the same swarms (section 8).
 
 ## 1. What is and is not quantum-inspired
 
@@ -333,8 +334,45 @@ The comparisons in BENCHMARKS.md follow one method (`benchmark.py` and the scrip
 | 2-opt pass | O(n^2), exact delta in O(1) | `local_search.two_opt` |
 | Held-Karp | O(2^n n^2), n <= 16 | `exact_held_karp.py` |
 | Route search / ILS | neighbour lists + a work queue; about 10 ms per ILS iteration (measured) | `route_search.py` |
+| Shortest path, exact | O(\|A\| log \|N\|) | `shortest_path.dijkstra_path` |
+| Shortest path, swarm search | O(P d) per iteration for the update, plus one decoding walk per particle | `shortest_path.search_path` |
 
-## 8. References
+## 8. The shortest-path mode (`shortest_path.py`)
+
+The problem statement's first objective is the quickest route between two places. Given a source s and a target g in the road
+network of section 2.1, find the path P = (s = v_0, v_1, ..., v_k = g) of arcs in A that minimizes
+
+```
+cost(P) = sum_{j=1..k} c_(v_{j-1}, v_j)          the same arc cost c_a of section 2.1, so the same weights and traffic
+```
+
+With the default weights this is the driving time in minutes; with a blend it is the weighted cost, and the reported minutes,
+kilometres and congestion delay of the chosen path are computed as in section 2.2. All arc costs are non-negative, so
+**Dijkstra's algorithm is exact** in O(|A| log |N|); it is the reference for everything below and the method the app uses when asked
+for "the" route.
+
+**Searching for it with a swarm.** To show that the same machinery handles a second kind of problem, the code also searches for the
+path with QPSO, classical PSO and a genetic algorithm.
+
+- **Corridor.** The search is restricted to the intersections v whose straight-line detour |s v| + |v g| is at most 1.6 |s g|,
+  widened until g is reachable from s inside it (all intersections if they have no coordinates). This keeps the dimension d, the
+  corridor size, at 26-102 on the maps of Finding 18 instead of the whole map. It is an approximation: the best path can leave the
+  corridor (it did not on 248 of 250 benchmark pairs).
+- **Encoding (priority-based, Gen and Cheng).** A particle is a vector x in [0, 1]^d with one priority per corridor node. Decoding
+  starts at s and repeatedly steps to the not-yet-visited out-neighbour with the highest priority; a node with no such neighbour is
+  a dead end, so the walk steps back and never returns to it. Every particle therefore decodes to a valid path that reaches g (if g
+  is reachable at all), and its fitness is cost(P).
+- **Update rules.** QPSO uses the update of section 4 and classical PSO the velocity update of section 4.1, unchanged, on these
+  vectors; the GA uses tournament selection (size 3), uniform crossover, Gaussian mutation (sigma 0.2, rate 1/d) and elitism. The
+  defaults are 30 particles and 200 iterations for all three.
+- **Warm start.** One particle starts as x_v = 1 - |v g| / max_u |u g|: nodes nearer the target get higher priority, so decoding it
+  walks greedily towards g. It needs no graph search, only coordinates.
+
+**What is claimed.** The searches are heuristics: they return a valid path whose cost is at least Dijkstra's, and on the maps tested
+they find the exact path on about 90% of pairs at 40 intersections and 42-44% at 300 (Finding 18). They are not faster or better
+than Dijkstra, and the quantum-inspired update is not better than PSO or the GA here.
+
+## 9. References
 
 - Sun, Feng, Xu (2004). Particle swarm optimization with particles having quantum behavior. IEEE Congress on Evolutionary
   Computation.

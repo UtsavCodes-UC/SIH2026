@@ -45,11 +45,9 @@ def graph_view(stored: StoredGraph) -> GraphView:
     return GraphView(summary=graph_summary(stored), nodes=nodes, edges=edges)
 
 
-def _leg_polyline(graph: TrafficGraph, u, v, weights: CostWeights | None = None):
-    """Follow the cheapest path from u to v (the quickest, unless other weights were asked for). Returns the
-    [lat, lon] points and the path's real metrics: minutes, kilometres and congestion delay."""
+def path_points(graph: TrafficGraph, path) -> list[list[float]]:
+    """The [lat, lon] points along a node path, following each road's shape when it has one."""
     g = graph.graph
-    path = graph.shortest_path(u, v, weights)
     points: list[list[float]] = []
     for a, b in zip(path, path[1:]):
         edge = g[a][b]
@@ -59,7 +57,16 @@ def _leg_polyline(graph: TrafficGraph, u, v, weights: CostWeights | None = None)
             [g.nodes[b]["lat"], g.nodes[b]["lon"]],
         ]
         points.extend(segment if not points else segment[1:])
-    return points, path_metrics(graph, path)
+    if not points and path:  # a path of a single node
+        points = [[g.nodes[path[0]]["lat"], g.nodes[path[0]]["lon"]]]
+    return points
+
+
+def _leg_polyline(graph: TrafficGraph, u, v, weights: CostWeights | None = None):
+    """Follow the cheapest path from u to v (the quickest, unless other weights were asked for). Returns the
+    [lat, lon] points and the path's real metrics: minutes, kilometres and congestion delay."""
+    path = graph.shortest_path(u, v, weights)
+    return path_points(graph, path), path_metrics(graph, path)
 
 
 def route_outputs(stored: StoredGraph, problem: RoutingProblem, routes: list[list]) -> list[RouteOut]:

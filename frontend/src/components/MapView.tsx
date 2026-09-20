@@ -1,11 +1,11 @@
 import L from "leaflet";
 import { useEffect, useMemo } from "react";
 import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
-import type { GraphView, LatLng, OptimizeResponse } from "../api/types";
-import { CONGESTION_BUCKETS, bucketIndex, coordinateIndex, vehicleColor } from "../lib/helpers";
+import type { GraphView, LatLng, OptimizeResponse, ShortestPathResponse } from "../api/types";
+import { CONGESTION_BUCKETS, PATH_COLORS, bucketIndex, coordinateIndex, vehicleColor } from "../lib/helpers";
 import TrafficBadge from "./TrafficBadge";
 
-export type SelectMode = "off" | "depot" | "stops";
+export type SelectMode = "off" | "depot" | "stops" | "pathA" | "pathB";
 
 interface Props {
   graph: GraphView;
@@ -13,6 +13,9 @@ interface Props {
   stops: number[];
   demands: Record<string, number> | null;
   result: OptimizeResponse | null;
+  pathA: number | null;
+  pathB: number | null;
+  pathResult: ShortestPathResponse | null; // drawn instead of the vehicle routes when given
   selectMode: SelectMode;
   onPickNode: (id: number) => void;
   onSelectMode: (mode: SelectMode) => void;
@@ -70,7 +73,15 @@ const depotIcon = L.divIcon({
   iconAnchor: [14, 14],
 });
 
-export default function MapView({ graph, depot, stops, demands, result, selectMode, onPickNode, onSelectMode }: Props) {
+const endpointIcon = (label: string) =>
+  L.divIcon({
+    className: "",
+    html: `<div class="endpoint-badge">${label}</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+  });
+
+export default function MapView({ graph, depot, stops, demands, result, pathA, pathB, pathResult, selectMode, onPickNode, onSelectMode }: Props) {
   const coords = useMemo(() => coordinateIndex(graph.nodes), [graph.nodes]);
 
   // Roads grouped by congestion band: a handful of multi-polylines instead of thousands of layers.
@@ -123,6 +134,19 @@ export default function MapView({ graph, depot, stops, demands, result, selectMo
             ),
           )}
 
+        {/* shortest path: the exact route underneath, each search a thinner line on top of it */}
+        {pathResult?.results
+          .slice()
+          .sort((a, b) => Number(b.algorithm === "dijkstra") - Number(a.algorithm === "dijkstra"))
+          .map((r) => (
+            <Polyline
+              key={`path-${r.algorithm}`}
+              positions={r.path}
+              interactive={false}
+              pathOptions={{ color: PATH_COLORS[r.algorithm], weight: r.algorithm === "dijkstra" ? 8 : 4, opacity: r.algorithm === "dijkstra" ? 0.9 : 1, dashArray: r.algorithm === "dijkstra" ? undefined : "1 7", lineCap: "round" }}
+            />
+          ))}
+
         {result?.routes.map((route) => (
           <Polyline
             key={`casing-${route.vehicle}`}
@@ -167,6 +191,15 @@ export default function MapView({ graph, depot, stops, demands, result, selectMo
           }),
         )}
 
+        {[["A", pathA], ["B", pathB]].map(([label, id]) => {
+          const position = id === null ? undefined : coords.get(id as number);
+          return position ? (
+            <Marker key={`end-${label}`} position={position} icon={endpointIcon(label as string)} zIndexOffset={900}>
+              <Tooltip>{`${label} · node ${id}`}</Tooltip>
+            </Marker>
+          ) : null;
+        })}
+
         {depot !== null && coords.get(depot) && (
           <Marker position={coords.get(depot)!} icon={depotIcon} zIndexOffset={1000}>
             <Tooltip>{`Depot · node ${depot}`}</Tooltip>
@@ -180,6 +213,8 @@ export default function MapView({ graph, depot, stops, demands, result, selectMo
           [
             ["depot", "set depot"],
             ["stops", "toggle stops"],
+            ["pathA", "set A"],
+            ["pathB", "set B"],
           ] as const
         ).map(([mode, label]) => (
           <button

@@ -347,6 +347,18 @@ label.weight > span {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
+.endpoint-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #0f766e;
+  color: #fff;
+  font: 800 13px/22px system-ui, sans-serif;
+  text-align: center;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+}
+
 .depot-badge {
   width: 28px;
   height: 28px;

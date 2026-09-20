@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import benchmark, graph, optimize, traffic
+from app.api import benchmark, graph, optimize, shortest_path, traffic
 from app.core.vrp_formulation import UnreachableStopError
 from app.data.osm_loader import CityLoadError, UnusablePlaceError
 from app.data.tomtom import TrafficProviderError
@@ -59,6 +59,7 @@ api = APIRouter(prefix="/api")
 api.include_router(graph.router)
 api.include_router(optimize.router)
 api.include_router(benchmark.router)
+api.include_router(shortest_path.router)
 api.include_router(traffic.router)
 
 

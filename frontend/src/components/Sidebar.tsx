@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { Algorithm, CongestionMode, GraphView, PlaceSuggestion, Preset, SnapshotInfo, TrafficStatus } from "../api/types";
-import { ALGORITHM_LABELS, formatCaptured } from "../lib/helpers";
+import type { Algorithm, CongestionMode, GraphView, PathAlgorithm, PlaceSuggestion, Preset, SnapshotInfo, TrafficStatus } from "../api/types";
+import { ALGORITHM_LABELS, PATH_LABELS, formatCaptured } from "../lib/helpers";
 import type { Busy, SolverParams } from "../lib/params";
 import PlaceSearchBox from "./PlaceSearchBox";
 
@@ -23,6 +23,9 @@ interface Props {
   onClearStops: () => void;
   onOptimize: () => void;
   onBenchmark: () => void;
+  pathA: number | null;
+  pathB: number | null;
+  onFindPath: (all: boolean) => void;
   onTraffic: (mode: CongestionMode, snapshotId?: string) => void;
   trafficStatus: TrafficStatus | null;
   snapshots: SnapshotInfo[];
@@ -30,6 +33,8 @@ interface Props {
 }
 
 const ALGORITHMS: Algorithm[] = ["qpso", "pso", "ga", "nearest_neighbor", "route_search"];
+
+const PATH_ALGORITHMS: PathAlgorithm[] = ["dijkstra", "qpso", "pso", "ga"];
 
 const WEIGHT_LABELS = { time: "Travel time", distance: "Distance", congestion: "Congestion" } as const;
 const WEIGHT_HELP = {
@@ -392,6 +397,47 @@ export default function Sidebar(props: Props) {
           <input type="checkbox" checked={props.autoReoptimize} onChange={(e) => props.onAutoReoptimize(e.target.checked)} />
           Re-optimize automatically after traffic changes
         </label>
+      </section>
+
+      <section>
+        <h2>5 · Shortest path</h2>
+        <p className="hint">
+          The cheapest way between two places, for the same "What to minimize" as above. Press <strong>set A</strong> or <strong>set B</strong> on the
+          map toolbar, then click the map.
+        </p>
+        <p className="graph-info">
+          A: <strong>{props.pathA ?? "—"}</strong> · B: <strong>{props.pathB ?? "—"}</strong>
+        </p>
+        <label>
+          Method
+          <select value={params.pathAlgorithm} onChange={(e) => onParams({ pathAlgorithm: e.target.value as PathAlgorithm })}>
+            {PATH_ALGORITHMS.map((a) => (
+              <option key={a} value={a}>
+                {PATH_LABELS[a]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {params.pathAlgorithm !== "dijkstra" && (
+          <div className="grid-2">
+            <label>Particles{numberInput(params.pathParticles, (n) => onParams({ pathParticles: n }), 5, 200, 5)}</label>
+            <label>Iterations{numberInput(params.pathIterations, (n) => onParams({ pathIterations: n }), 10, 3000, 50)}</label>
+          </div>
+        )}
+        <div className="row">
+          <button className="btn grow" disabled={!idle || props.pathA === null || props.pathB === null} onClick={() => props.onFindPath(false)}>
+            {busy === "path" ? "Searching…" : "Find route"}
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={!idle || props.pathA === null || props.pathB === null}
+            onClick={() => props.onFindPath(true)}
+            title="Run Dijkstra, QPSO, classical PSO and the genetic algorithm on this pair and compare them"
+          >
+            Compare all four
+          </button>
+        </div>
+        <p className="hint">Dijkstra is exact and takes milliseconds. The other three search for the same route with particles, so they can end above the optimum.</p>
       </section>
     </aside>
   );

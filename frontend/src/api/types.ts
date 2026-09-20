@@ -203,3 +203,42 @@ export interface BenchmarkResponse {
   warnings: string[];
   traffic: TrafficInfo;
 }
+
+export type PathAlgorithm = "dijkstra" | "qpso" | "pso" | "ga";
+
+export interface ShortestPathRequest {
+  graph_id: string;
+  source: number;
+  target: number;
+  algorithms: PathAlgorithm[];
+  cost_weights?: CostWeights;
+  n_particles: number;
+  n_iterations: number;
+  warm_start: boolean;
+  seed?: number | null;
+}
+
+export interface PathOut {
+  algorithm: PathAlgorithm;
+  nodes: number[]; // source ... target
+  path: LatLng[]; // polyline along the roads
+  cost: number; // the weighted cost that was minimized
+  time_min: number; // real minutes, whatever the weights
+  distance_km: number;
+  delay_min: number;
+  hops: number; // road segments
+  runtime_sec: number;
+  iterations: number;
+  convergence: number[];
+  gap_pct: number; // above the exact optimum (0 for Dijkstra)
+}
+
+export interface ShortestPathResponse {
+  graph_id: string;
+  source: number;
+  target: number;
+  cost_weights: CostWeights;
+  exact_cost: number;
+  results: PathOut[];
+  traffic: TrafficInfo;
+}

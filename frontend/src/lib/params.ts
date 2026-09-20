@@ -1,4 +1,4 @@
-import type { Algorithm, CostWeights } from "../api/types";
+import type { Algorithm, CostWeights, PathAlgorithm } from "../api/types";
 
 /** How much each of the three things matters, as sliders from 0 to 100. Only the ratios count. */
 export type WeightPercents = CostWeights;
@@ -13,6 +13,9 @@ export interface SolverParams {
   polish: boolean;
   warmStart: boolean;
   timeLimit: number; // seconds; route search only
+  pathAlgorithm: PathAlgorithm; // shortest path between two points
+  pathParticles: number;
+  pathIterations: number;
   timeWindows: boolean; // demo time windows on every stop
   serviceTime: number; // minutes at each stop (moves the clock the windows run on)
   seed: number;
@@ -29,9 +32,12 @@ export const DEFAULT_PARAMS: SolverParams = {
   polish: true,
   warmStart: true,
   timeLimit: 10,
+  pathAlgorithm: "dijkstra",
+  pathParticles: 30,
+  pathIterations: 200,
   timeWindows: false,
   serviceTime: 5,
   seed: 1,
 };
 
-export type Busy = null | "graph" | "optimize" | "benchmark" | "traffic" | "live";
+export type Busy = null | "graph" | "optimize" | "benchmark" | "traffic" | "live" | "path";

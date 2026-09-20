@@ -10,20 +10,24 @@ import {
   runBenchmark,
   saveSnapshot,
   setCongestion,
+  shortestPath,
 } from "./api/client";
 import type {
   BenchmarkResponse,
   CongestionMode,
   GraphView,
   OptimizeResponse,
+  PathAlgorithm,
   Preset,
   ProblemSpec,
+  ShortestPathResponse,
   SnapshotInfo,
   TimeWindow,
   TrafficStatus,
 } from "./api/types";
 import BenchmarkPanel from "./components/BenchmarkPanel";
 import MapView, { type SelectMode } from "./components/MapView";
+import PathPanel from "./components/PathPanel";
 import ResultsPanel from "./components/ResultsPanel";
 import Sidebar from "./components/Sidebar";
 import { centralNode, normalizedWeights, sample } from "./lib/helpers";
@@ -35,6 +39,7 @@ const BUSY_LABEL: Record<Exclude<Busy, null>, string> = {
   benchmark: "Benchmarking every algorithm on this problem…",
   traffic: "Updating traffic…",
   live: "Fetching live traffic from TomTom (about 25 seconds)…",
+  path: "Finding the route…",
 };
 
 export default function App() {
@@ -53,9 +58,13 @@ export default function App() {
   const [demands, setDemands] = useState<Record<string, number> | null>(null);
   // Demo time windows too: drawn by the server once, then kept for the same stops.
   const [windows, setWindows] = useState<Record<string, TimeWindow> | null>(null);
+  // Shortest path between two chosen places, separate from the vehicle-routing problem.
+  const [pathA, setPathA] = useState<number | null>(null);
+  const [pathB, setPathB] = useState<number | null>(null);
+  const [pathResult, setPathResult] = useState<ShortestPathResponse | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"results" | "benchmark">("results");
+  const [tab, setTab] = useState<"results" | "benchmark" | "path">("results");
   const [trafficStatus, setTrafficStatus] = useState<TrafficStatus | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -92,6 +101,9 @@ export default function App() {
     const nextDepot = centralNode(view.nodes);
     refreshSnapshots(view);
     setGraph(view);
+    setPathA(null);
+    setPathB(null);
+    setPathResult(null);
     setDepot(nextDepot);
     setStops(sample(view.nodes.map((n) => n[0]).filter((id) => id !== nextDepot), nStops));
     invalidate();
@@ -174,6 +186,28 @@ export default function App() {
     }
   }
 
+  async function doShortestPath(all: boolean) {
+    if (!graph || pathA === null || pathB === null) return;
+    const algorithms: PathAlgorithm[] = all ? ["dijkstra", "qpso", "pso", "ga"] : [params.pathAlgorithm];
+    const out = await run("path", () =>
+      shortestPath({
+        graph_id: graph.summary.graph_id,
+        source: pathA,
+        target: pathB,
+        algorithms,
+        cost_weights: normalizedWeights(params.weights),
+        n_particles: params.pathParticles,
+        n_iterations: params.pathIterations,
+        warm_start: true,
+        seed: params.seed,
+      }),
+    );
+    if (out) {
+      setPathResult(out);
+      setTab("path");
+    }
+  }
+
   async function doTraffic(mode: CongestionMode, snapshotId?: string) {
     if (!graph) return;
     const view = await run(mode === "live" ? "live" : "traffic", () => setCongestion(graph.summary.graph_id, mode, params.seed, snapshotId));
@@ -181,6 +215,7 @@ export default function App() {
     if (!view) return;
     setGraph(view);
     if (autoReoptimize && result) await doOptimize();
+    if (autoReoptimize && pathResult) await doShortestPath(pathResult.results.length > 1);
   }
 
   async function doSaveSnapshot() {
@@ -194,6 +229,11 @@ export default function App() {
   }
 
   function pickNode(id: number) {
+    if (selectMode === "pathA" || selectMode === "pathB") {
+      (selectMode === "pathA" ? setPathA : setPathB)(id);
+      setPathResult(null);
+      return;
+    }
     if (selectMode === "depot") {
       setDepot(id);
       setStops((s) => s.filter((x) => x !== id));
@@ -235,6 +275,9 @@ export default function App() {
         }}
         onOptimize={doOptimize}
         onBenchmark={doBenchmark}
+        pathA={pathA}
+        pathB={pathB}
+        onFindPath={doShortestPath}
         onTraffic={doTraffic}
         trafficStatus={trafficStatus}
         snapshots={snapshots}
@@ -249,7 +292,10 @@ export default function App() {
               depot={depot}
               stops={stops}
               demands={demands}
-              result={result}
+              result={tab === "path" ? null : result}
+              pathA={pathA}
+              pathB={pathB}
+              pathResult={tab === "path" ? pathResult : null}
               selectMode={selectMode}
               onPickNode={pickNode}
               onSelectMode={setSelectMode}
@@ -279,13 +325,15 @@ export default function App() {
 
         <section className="bottom">
           <div className="tabs" role="tablist">
-            {(["results", "benchmark"] as const).map((t) => (
+            {(["results", "benchmark", "path"] as const).map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "tab tab-active" : "tab"} onClick={() => setTab(t)}>
-                {t === "results" ? "Route plan" : "Algorithm benchmark"}
+                {t === "results" ? "Route plan" : t === "benchmark" ? "Algorithm benchmark" : "Shortest path"}
               </button>
             ))}
           </div>
-          <div className="bottom-scroll">{tab === "results" ? <ResultsPanel result={result} /> : <BenchmarkPanel benchmark={benchmark} />}</div>
+          <div className="bottom-scroll">
+            {tab === "results" ? <ResultsPanel result={result} /> : tab === "benchmark" ? <BenchmarkPanel benchmark={benchmark} /> : <PathPanel response={pathResult} />}
+          </div>
         </section>
       </main>
     </div>

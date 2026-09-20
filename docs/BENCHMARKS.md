@@ -1,6 +1,6 @@
 # Benchmark results
 
-## Read this first — current headline (Findings 7-17)
+## Read this first — current headline (Findings 7-18)
 
 The problem statement's core claim is that QPSO gives "stronger global
 search, faster convergence, and a better balance between exploration and
@@ -96,6 +96,13 @@ charged per minute. QPSO, PSO and the GA plan around them (plans that ignore the
 that price lateness are on time, for roughly 26-36% more driving on the random demo windows), but the route search and the exact
 solver do not handle windows. The algorithms only did well once all three were given a window-aware starting solution; then QPSO
 ties with the GA and PSO. It is not better than them here.
+
+Finding 18 covers the problem statement's first objective, the quickest route between two places. Dijkstra's algorithm is exact and
+takes under a millisecond; QPSO, PSO and a genetic algorithm search for the same path with random-key priorities and are checked
+against it on 50 pairs at each of four map sizes (40 to 300 intersections). They find the exact route on 78-90% of pairs on the
+smallest map and 42-44% on the largest (average gap under 1% growing to 2.6-4%), several hundred times slower, and never better than
+Dijkstra. QPSO is not better than PSO or the GA (one significant win over the GA at 40 intersections, none elsewhere). A starting
+particle that points at the target is what keeps them competitive as maps grow.
 
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
@@ -1067,6 +1074,90 @@ Reproduce (from `backend/`; the CSVs are in `results/time_windows/`):
 python scripts/time_windows_experiment.py --csv results/time_windows/aware_vs_ignoring.csv
 python scripts/time_windows_experiment.py --plain-seeds --csv results/time_windows/aware_vs_ignoring_plain_seeds.csv
 python scripts/time_windows_experiment.py --from-csv results/time_windows/aware_vs_ignoring.csv
+```
+
+## Finding 18 — shortest path: Dijkstra is exact and fast, the swarm searches are near-optimal but slower, and QPSO is not better than PSO or the GA
+
+**The question.** The problem statement's first objective is the quickest route between two places, with QPSO as the quantum-inspired
+method. The app now has that mode (MATH_FORMULATION.md, section 8; `core/shortest_path.py`, `POST /api/shortest-path`, "Shortest path"
+in the UI). Dijkstra's algorithm solves it exactly, so it is the reference; the question is how close QPSO, classical PSO and a genetic
+algorithm get when they search for the same path, at what cost, and whether QPSO has an edge.
+
+**How the searches work.** A particle holds one priority per intersection in a corridor around the straight line from A to B (factor
+1.6, grown until A and B are connected). A path is decoded by walking from A to the unvisited neighbour with the highest priority,
+backing up out of dead ends, so every particle decodes to a valid path that reaches B. The fitness is the path's cost under the chosen
+weights (default: minutes). QPSO, PSO and the GA use the same encoding, decoder and cost, 30 particles x 200 iterations, and the same
+starting particle: one whose priorities point towards B (a warm start, the counterpart of the vehicle-routing seeds). Dijkstra is
+always run on the whole map, so a search's gap is measured against the true optimum.
+
+**Correctness checks** (`tests/test_shortest_path.py`, 16 tests, plus 6 API tests). The decoder always reaches the target, including
+through dead ends; Dijkstra agrees with networkx on random graphs and with blended weights; no search ever returns a path cheaper than
+Dijkstra's (also asserted for every one of the 1,250 search runs below); convergence curves never rise; QPSO finds the exact path on all six
+test pairs of a 40-node map.
+
+**Experiment** (`scripts/shortest_path_experiment.py`). The app's synthetic road network with random congestion at 40, 80, 160 and 300
+intersections (one map per size), 50 random pairs per size at least four road segments apart by fewest segments (the quickest routes
+have 6.6 to 12.2 segments on average), cost = minutes, same pairs and seed for every method. "Optimal" means the search returned a path
+whose cost equals Dijkstra's. Corridor sizes: 26, 45, 74 and 102 nodes on average. Cells are pairs solved optimally / mean gap above
+the optimum; lower gap is better, and Dijkstra is 50 / 50 and 0% everywhere.
+
+| intersections | QPSO (app default) | classical PSO | genetic algorithm | QPSO without the starting particle | QPSO, 60 x 500 |
+|---|---|---|---|---|---|
+| 40 | 45 / 50, 0.41% | 44 / 50, 0.30% | 39 / 50, 0.80% | 45 / 50, 0.31% | 48 / 50, 0.03% |
+| 80 | 41 / 50, 0.72% | 38 / 50, 1.57% | 38 / 50, 0.96% | 32 / 50, 3.05% | 44 / 50, 0.50% |
+| 160 | 27 / 50, 3.31% | 22 / 50, 4.64% | 23 / 50, 3.05% | 28 / 50, 7.72% | 27 / 50, 2.98% |
+| 300 | 22 / 50, 4.01% | 21 / 50, 3.09% | 22 / 50, 2.58% | 22 / 50, 12.23% | 29 / 50, 2.56% |
+
+Mean running time per pair, in milliseconds (Dijkstra 0.2, 0.3, 0.3, 0.5 at the four sizes):
+
+| intersections | QPSO | classical PSO | genetic algorithm | QPSO 60 x 500 |
+|---|---|---|---|---|
+| 40 | 117 | 104 | 360 | 541 |
+| 80 | 161 | 142 | 392 | 724 |
+| 160 | 263 | 286 | 509 | 1,144 |
+| 300 | 288 | 357 | 547 | 1,376 |
+
+Worst single pair, default QPSO: 9.9%, 12.7%, 41.0% and 32.5% above the optimum at the four sizes. With blended cost weights (time 0.4,
+distance 0.3, congestion 0.3) on the 80-node map the picture is the same as with minutes alone: optimal on 38 / 50 (QPSO, mean gap 1.26%),
+35 / 50 (PSO, 1.95%), 36 / 50 (GA, 1.21%), 33 / 50 without the starting particle (2.82%) and 41 / 50 for 60 x 500 (0.70%).
+
+**Reading it.**
+
+- **Dijkstra is the better method here, by a wide margin.** It is exact on every pair and several hundred times faster (0.2 to 0.5 ms
+  against 100 to 550 ms for the swarm searches at the default budget). The searches find the exact route on 78-90% of pairs at 40
+  intersections, falling to 42-44% at 300, with the average gap growing from under 1% to 2.6-4%; they are never better than Dijkstra. That is expected for a
+  problem with a known polynomial-time solution, and the app says so in its interface. The value of this mode is that QPSO, PSO and the
+  GA run on a second kind of problem, with the same cost model and traffic, and are checked against an exact answer.
+- **The optimum was almost always available to the searches.** The exact path lies fully inside the corridor on 248 of the 250 pairs
+  (two at 160 intersections are not), so the gaps are search failures, not the corridor.
+- **QPSO is not better than PSO or the GA.** Paired exact sign tests on the 50 pairs at each size: QPSO beats the GA at 40 intersections
+  (better on 8 pairs, worse on none, p = 0.004), and that is the only significant result between the three. Against PSO it is never
+  significant (best case 8 better / 4 worse at 80, p = 0.19), and at 300 intersections QPSO has the worse mean gap (4.01% against 3.09%
+  and 2.58%) although the medians are level (1.11%, 1.08%, 1.07%) and the paired tests are not significant (p about 0.17 for QPSO
+  worse than either). Do not claim an edge for QPSO on this problem.
+- **The starting particle matters.** Without it QPSO is worse at 80 intersections (better with it on 14 pairs, worse on 3, p = 0.006)
+  and at 300 (23 against 6, p = 0.001), with mean gaps of 3.05% and 12.23% against 0.72% and 4.01%; at 160 the direction is the
+  same but not significant (17 against 9, p = 0.08), and at 40 it makes no difference (1 against 1). Domain knowledge in the starting
+  solution is what keeps the swarm competitive as the map grows, the same lesson as the seeds in Finding 17.
+- **More budget helps but does not make it exact.** Doubling the particles and 2.5 times the iterations (60 x 500) raises optimal pairs
+  from 22 to 29 of 50 at 300 intersections (better on 20 of 28 pairs that differ, p = 0.018), at 4 to 5 times the running time; at 40,
+  80 and 160 intersections the difference is not significant.
+
+**What this supports, and what it does not.**
+
+- Supported: the app finds the quickest route exactly (Dijkstra) and offers QPSO, PSO and a GA over the same problem, with real
+  minutes, kilometres and congestion delay reported, and a convergence curve against the exact optimum.
+- Not supported: that QPSO beats Dijkstra, PSO or the GA at shortest paths. It does not. It also does not become exact with more budget;
+  its gap grows with map size.
+- Caveats: one synthetic map per size (graph seed 5) with random congestion, not real OpenStreetMap streets; 50 pairs per size, one
+  seed per pair; the corridor restriction (factor 1.6) is part of the method; the searches assume a static map for the length of one
+  search; running times are wall-clock on one machine with 8 worker processes, so read them as orders of magnitude.
+
+Reproduce (from `backend/`; the CSV is in `results/shortest_path/`):
+
+```
+python scripts/shortest_path_experiment.py --csv results/shortest_path/paths.csv
+python scripts/shortest_path_experiment.py --from-csv results/shortest_path/paths.csv
 ```
 
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)

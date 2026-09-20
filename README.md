@@ -84,6 +84,13 @@ cd backend && python scripts/warm_city_cache.py
    automatically, so you can watch routes detour around a jam. On a real city, *Fetch live traffic*
    loads real TomTom readings instead (see below). A badge on the map and on every result always says
    where the congestion came from: LIVE, RECORDED, SIMULATED or FREE FLOW.
+5. **Shortest path** — the quickest route between two places. Press *set A* and *set B* in the map toolbar and click
+   the map, pick a method, then *Find route* (or *Compare all four*). **Dijkstra** is exact and takes
+   milliseconds; **QPSO**, **classical PSO** and a **genetic algorithm** search for the same route with
+   particles, so they can end above the optimum and are several hundred times slower. The same *What to
+   minimize* choice applies (time, distance, congestion or a blend), the result shows real minutes, kilometres
+   and delay, and the table reports how far above the exact optimum each method ended, with the search progress
+   next to the exact line. Evidence: docs/BENCHMARKS.md, Finding 18.
 
 ## Place suggestions
 
@@ -142,6 +149,7 @@ Interactive docs at http://localhost:8000/docs.
 | `GET` · `POST /api/graph/{id}/traffic/snapshots` | list recorded traffic for a map · record the current real traffic |
 | `POST /api/optimize` | solve one problem; routes come back as polylines along the roads. `algorithm` is `qpso` (default), `pso`, `ga`, `nearest_neighbor` or `route_search`; the last takes `time_limit_sec` (1-60, default 10) and ignores the swarm settings and `polish` |
 | `POST /api/benchmark` | run every algorithm on one problem (raw and 2-opt-polished costs); `include_route_search: true` adds the route search (with `time_limit_sec`) |
+| `POST /api/shortest-path` | the quickest route between two intersections (`source`, `target`). `algorithms` is a list of `dijkstra` (default, exact), `qpso`, `pso`, `ga`; Dijkstra is always computed as the reference, every result carries its `gap_pct` above the exact cost, its road polyline, real minutes/km/delay and (for the searches) a convergence curve. The searches take `n_particles`, `n_iterations`, `warm_start` and `seed` |
 
 Both solve endpoints take `cost_weights` (`{"time": 1, "distance": 0, "congestion": 0}` by default, all non-negative,
 not all zero, only the ratios matter). `POST /api/optimize` returns `total_time_min`, `total_distance_km` and
@@ -164,7 +172,7 @@ backend/
   app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions, CVRPLIB benchmark adapter
   app/services/    graph store, problem builder, solver dispatch, map/route views, live traffic, snapshots
   app/api/         FastAPI routers          app/schemas/   request/response models
-  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, cost_weights_tradeoff.py, time_windows_experiment.py, ...), check_tomtom.py, warm_city_cache.py
+  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, cost_weights_tradeoff.py, time_windows_experiment.py, shortest_path_experiment.py, ...), check_tomtom.py, warm_city_cache.py
   tests/           pytest suite (run from backend/: python -m pytest tests/)
   results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
 frontend/          React + TypeScript + Leaflet + Recharts map UI
@@ -179,5 +187,7 @@ customers: warm start, a size-aware QPSO jump, a polish that moves stops between
 The stronger route search (Findings 13-15) is available in the API and the UI as an option, with the
 QPSO pipeline still the default. The hybrid engine and the optimal split decoder (Findings 11-12) are
 built and benchmarked but not wired into the API or the UI.
-Still open for Day 3: the mathematical-formulation write-up, "block a road" what-if events, a
-time / distance / fuel cost model, Docker packaging and the demo script.
+Also done: the mathematical-formulation write-up, benchmarks against the standard CVRPLIB instances,
+a cost model that blends time, distance and congestion, soft time windows, and the shortest-path mode
+(Dijkstra, with QPSO / PSO / GA searches measured against it).
+Still open for Day 3: "block a road" what-if events, Docker packaging and the demo script.

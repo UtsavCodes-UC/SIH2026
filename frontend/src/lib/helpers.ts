@@ -34,6 +34,20 @@ export const ALGORITHM_LABELS: Record<string, string> = {
   held_karp_exact: "Exact (Held-Karp)",
 };
 
+export const PATH_LABELS: Record<string, string> = {
+  dijkstra: "Dijkstra (exact)",
+  qpso: "QPSO",
+  pso: "Classical PSO",
+  ga: "Genetic algorithm",
+};
+
+export const PATH_COLORS: Record<string, string> = {
+  dijkstra: "#1b1b1e",
+  qpso: "#d1495b",
+  pso: "#2e6f95",
+  ga: "#3c8d5a",
+};
+
 export const ALGORITHM_COLORS: Record<string, string> = {
   qpso: "#d1495b",
   classical_pso: "#2e6f95",
