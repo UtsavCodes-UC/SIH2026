@@ -8,6 +8,7 @@ and exits with 1 if a check fails. Nothing here spends the live-traffic quota un
     python scripts/demo_rehearsal.py                                 # against http://127.0.0.1:8000
     python scripts/demo_rehearsal.py --base http://127.0.0.1:8020    # e.g. the Docker container on another port
     python scripts/demo_rehearsal.py --live                          # also fetch real TomTom traffic once (about 80 requests)
+    python scripts/demo_rehearsal.py --public --base https://...     # a public deployment: no TomTom key or recorded traffic is expected
 
 The numbers differ from the screen in the UI, which draws random stops each time; what should match is the pattern (the
 direction and rough size of each change). Standard library only.
@@ -101,6 +102,7 @@ def used_roads(plan: dict, view: dict) -> list[tuple[int, int]]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base", default="http://127.0.0.1:8000")
+    parser.add_argument("--public", action="store_true", help="check a public deployment, which ships no TomTom key and no recorded traffic: their absence is noted, not a failure")
     parser.add_argument("--live", action="store_true", help="also fetch real TomTom traffic once (spends about 80 of the 2,500 daily requests)")
     args = parser.parse_args()
     api = Api(args.base)
@@ -117,7 +119,10 @@ def main() -> int:
     check("id=\"root\"" in api.get("/"), "the UI is served from the same address (npm run build done / Docker image built)")
     check(len(api.get("/api/graph/presets")) == 4, "the four preset cities are listed")
     status = api.get("/api/traffic/status")
-    check(status["live_available"], "a TomTom key is configured (live traffic)", "recorded traffic still works without it", warn_only=True)
+    if args.public:
+        print("  [note] public mode: live traffic is not expected here" + ("" if not status["live_available"] else " (but a key IS configured: anyone can spend its quota)"))
+    else:
+        check(status["live_available"], "a TomTom key is configured (live traffic)", "recorded traffic still works without it", warn_only=True)
 
     # ------------------------------------------------------------------------------------------------ 1
     scene("1. Synthetic network, delivery plan (the UI starts on this: 80 intersections, 8 km, random traffic)")
@@ -159,7 +164,10 @@ def main() -> int:
     print(f"      {city['summary']['node_count']} intersections, {city['summary']['edge_count']} arcs; traffic starts as: {city['summary']['traffic']['label']}")
     check(city["summary"]["node_count"] > 300, "the real map loaded", f"{city['summary']['node_count']} intersections")
     snaps = api.get(f"/api/graph/{cid}/traffic/snapshots")
-    check(len(snaps) >= 1, "a recorded TomTom snapshot exists for this map", f"{len(snaps)} found")
+    if args.public and not snaps:
+        print("  [note] public mode: no recorded snapshot, so the recorded-traffic, cost-weight and road-closure scenes (4 to 6) are skipped")
+    else:
+        check(len(snaps) >= 1, "a recorded TomTom snapshot exists for this map", f"{len(snaps)} found")
     free = api.post("/api/optimize", {"graph_id": cid, "n_stops": 12, "seed": 3})
     print("      free flow : " + summary_line(free))
     if snaps:

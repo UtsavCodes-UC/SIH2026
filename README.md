@@ -47,7 +47,8 @@ Open http://localhost:5173. For a single-process deployment, run `npm run build`
 the backend then serves the built UI itself at http://localhost:8000.
 
 Real cities download from OpenStreetMap on first use (1-2 minutes) and are cached under
-`backend/data/cache/`. To pre-download the preset places so a demo works offline:
+`backend/data/cache/`. The four preset places already ship in `backend/data/presets/` and load at once; to pre-download other
+places so a demo works offline:
 
 ```bash
 cd backend && python scripts/warm_city_cache.py
@@ -72,6 +73,10 @@ Open http://localhost:8000. If that port is taken (for example by a local `uvico
 - **Maps and recorded traffic** stay on your disk: `backend/data/cache/` and `backend/data/traffic_snapshots/` are mounted
   into the container, so they survive rebuilds and a demo prepared online (warmed cities, a saved snapshot) works offline.
   On Linux, create the two folders first (`mkdir -p backend/data/cache backend/data/traffic_snapshots`) so they belong to you.
+- The four preset cities are bundled in `backend/data/presets/` (map data © OpenStreetMap contributors, ODbL), so a fresh container loads them
+  at once with no download and no warmed cache.
+- The container listens on `$PORT` when a host sets one (default 8000), so the same image runs on Google Cloud Run and similar hosts.
+  How to put it on the public internet for free: [docs/DEPLOY.md](docs/DEPLOY.md).
 - The container runs a single worker on purpose: loaded maps and their traffic live in that process's memory.
 - Tests inside the image: `docker compose run --rm app python -m pytest tests -q`.
 - Stop and remove it with `docker compose down`. For UI development keep using `npm run dev` as above.

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from pathlib import Path
 
 import networkx as nx
@@ -28,6 +29,9 @@ from app.core.geo import local_km
 from app.core.graph_model import TrafficGraph
 
 CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "cache"
+# The four preset places (at the UI's default 1200 m radius) ship with the repo, so a fresh clone, a fresh Docker container or a
+# fresh cloud instance loads them at once instead of downloading from OpenStreetMap (map data (c) OpenStreetMap contributors, ODbL).
+PRESET_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "presets"
 
 # Typical urban speeds (km/h) when a segment has no usable maxspeed tag.
 DEFAULT_SPEED_KPH = {
@@ -121,6 +125,14 @@ def _cache_path(lat: float, lon: float, radius_m: int, network_type: str) -> Pat
     return CACHE_DIR / f"{city_key(lat, lon, radius_m, network_type)}.graphml"
 
 
+def _seed_from_presets(path: Path) -> None:
+    """Copy a bundled preset map into the cache the first time it is asked for (no-op for any other place)."""
+    bundled = PRESET_DIR / path.name
+    if not path.exists() and bundled.is_file():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(bundled, path)
+
+
 def _configure_osmnx(ox) -> None:
     """Keep OSMnx's own HTTP cache inside data/cache (its default is ./cache in the current directory)."""
     ox.settings.use_cache = True
@@ -139,6 +151,8 @@ def load_city_graph(
     import osmnx as ox  # heavy import; only needed when a city is actually requested
 
     path = _cache_path(lat, lon, radius_m, network_type)
+    if not refresh:
+        _seed_from_presets(path)
     if path.exists() and not refresh:
         osm_graph = ox.load_graphml(path)
     else:

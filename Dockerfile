@@ -34,9 +34,12 @@ RUN useradd --create-home --uid 1000 app \
     && chown -R app:app /app
 USER app
 
+# The port comes from $PORT when the host sets one (Google Cloud Run, Render and similar do); 8000 otherwise.
+ENV PORT=8000
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+    CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT', '8000'), timeout=4)"]
 
 # One worker on purpose: loaded maps and their traffic are kept in this process's memory (services/graph_store.py).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# `exec` makes uvicorn the main process, so it receives the stop signal and shuts down cleanly.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
