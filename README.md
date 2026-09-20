@@ -4,6 +4,7 @@ A quantum-inspired metaheuristic (**QPSO**, Quantum Particle Swarm Optimization)
 capacitated multi-vehicle routes over a weighted road graph with live, changeable traffic,
 benchmarked against classical PSO, a genetic algorithm, a nearest-neighbour heuristic and an
 exact solver. Includes a REST API and a map UI, on synthetic networks or real OpenStreetMap cities.
+The problem, the cost function and each algorithm are written out in [docs/MATH_FORMULATION.md](docs/MATH_FORMULATION.md).
 
 **Read [docs/BENCHMARKS.md](docs/BENCHMARKS.md) before quoting any performance number.** In short:
 QPSO is a much stronger optimizer than classical PSO on its own (13-28% cheaper routes, p < 0.02),
@@ -150,7 +151,7 @@ backend/
   tests/           pytest suite (run from backend/: python -m pytest tests/)
   results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
 frontend/          React + TypeScript + Leaflet + Recharts map UI
-docs/              BENCHMARKS.md (results and caveats)
+docs/              MATH_FORMULATION.md (the problem, the cost, each algorithm), BENCHMARKS.md (results and caveats)
 ```
 
 ## Status
