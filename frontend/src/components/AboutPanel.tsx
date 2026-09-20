@@ -119,8 +119,9 @@ export default function AboutPanel({ onClose }: Props) {
               </p>
               <p>
                 <strong>Real city</strong> uses real streets from OpenStreetMap. Pick one of the ready-made places, or choose <em>Search for another place</em> and start
-                typing. <em>Radius</em> is how far from the centre to load, in metres. Press <strong>Load road network</strong>. The first time a place is downloaded
-                it can take a minute or two; after that it loads in seconds, even without internet.
+                typing. <em>Radius</em> is how far from the centre to load, in metres. Press <strong>Load road network</strong>. The ready-made places load at once at any
+                radius up to 2000 m, even without internet. Any other place, or a bigger radius, is downloaded the first time, which can take a minute or two (longer on a slow
+                server); after that it loads in seconds.
               </p>
             </section>
 

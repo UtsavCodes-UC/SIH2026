@@ -42,6 +42,15 @@ PRESET_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "presets"
 _CITY_MEMO: dict[tuple, bytes] = {}
 _CITY_MEMO_MAX = 12
 
+# Public Overpass servers, tried in this order. The main one can refuse connections from cloud hosts (a free Render instance could
+# not reach it), and osmnx then fails with a confusing "cannot access local variable 'response'" instead of saying so.
+OVERPASS_ENDPOINTS = (
+    "https://overpass-api.de/api",
+    "https://overpass.private.coffee/api",
+    "https://overpass.kumi.systems/api",
+    "https://maps.mail.ru/osm/tools/overpass/api",
+)
+
 # Typical urban speeds (km/h) when a segment has no usable maxspeed tag.
 DEFAULT_SPEED_KPH = {
     "motorway": 70.0, "motorway_link": 45.0, "trunk": 55.0, "trunk_link": 40.0,
@@ -151,11 +160,64 @@ def _memo_key(path: Path) -> tuple:
 
 def warm_presets() -> None:
     """Load the four preset places once, so the first visitor does not wait for the conversion (run in the background at start-up)."""
-    for preset in PRESETS:
+    # the default radius of every preset first, then the bigger bundled maps that other radii are cut from
+    jobs = [(p, 1200) for p in PRESETS] + [(p, r) for p in PRESETS for r in _bundled_radii(p["lat"], p["lon"], "drive") if r != 1200]
+    for preset, radius in jobs:
         try:
-            load_city_graph(preset["lat"], preset["lon"], radius_m=1200)
+            load_city_graph(preset["lat"], preset["lon"], radius_m=radius)
         except Exception:  # noqa: BLE001 - warming is best effort; a failure just means that city loads on demand
             continue
+
+
+def _bundled_radii(lat: float, lon: float, network_type: str) -> list[int]:
+    """Radii (metres) at which this exact centre ships in PRESET_DIR, smallest first."""
+    found = []
+    for path in PRESET_DIR.glob(f"osm_{lat:.4f}_{lon:.4f}_*_{network_type}.graphml"):
+        match = re.search(r"_(\d+)_" + re.escape(network_type) + r"\.graphml$", path.name)
+        if match:
+            found.append(int(match.group(1)))
+    return sorted(found)
+
+
+def _crop_from_bundle(lat: float, lon: float, radius_m: int, network_type: str) -> TrafficGraph | None:
+    """A preset place at a smaller radius than the one that ships: cut the square of half-side `radius_m` out of the bigger map and keep
+    its largest strongly connected part, which is what a download of that radius gives (up to a few roads at the very edge). Needs no
+    internet, so changing the radius of a preset place is instant. None if no bundled map of that centre is big enough."""
+    larger = [r for r in _bundled_radii(lat, lon, network_type) if r > radius_m]
+    if not larger:
+        return None
+    big = load_city_graph(lat, lon, radius_m=larger[0], network_type=network_type)
+    half = radius_m / 1000.0  # `pos` is kilometres east and north of the centre
+    inside = [n for n, a in big.graph.nodes(data=True) if abs(a["pos"][0]) <= half and abs(a["pos"][1]) <= half]
+    if not inside:
+        return None
+    part = big.graph.subgraph(inside)
+    strong = max(nx.strongly_connected_components(part), key=len)
+    cropped = TrafficGraph(directed=True)
+    for node in strong:
+        cropped.add_node(node, **big.graph.nodes[node])
+    for u, v, data in part.subgraph(strong).edges(data=True):
+        cropped.graph.add_edge(u, v, **data)  # keeps the road shape, class, congestion and weight
+    return cropped
+
+
+def _download(ox, lat: float, lon: float, radius_m: int, network_type: str):
+    """Download a map, trying each public Overpass server in turn and saying, per server, what went wrong."""
+    _configure_osmnx(ox)
+    failures = []
+    for endpoint in OVERPASS_ENDPOINTS:
+        ox.settings.overpass_endpoint = endpoint
+        try:
+            return ox.graph_from_point((lat, lon), dist=radius_m, network_type=network_type, simplify=True)
+        except Exception as exc:  # network errors surface as many different exception types
+            host = endpoint.split("/")[2]
+            # osmnx 1.9 raises UnboundLocalError from its own error handler when it cannot connect at all
+            reason = "could not connect" if isinstance(exc, UnboundLocalError) else f"{type(exc).__name__}: {str(exc)[:110]}"
+            failures.append(f"{host}: {reason}")
+    raise CityLoadError(
+        f"could not fetch OpenStreetMap data for ({lat:.4f}, {lon:.4f}) at {radius_m} m: no server answered ({'; '.join(failures)}). "
+        "Check the internet connection, or load a location that was cached earlier."
+    )
 
 
 def _configure_osmnx(ox) -> None:
@@ -178,20 +240,15 @@ def load_city_graph(
         _seed_from_presets(path)
         if path.exists() and (blob := _CITY_MEMO.get(_memo_key(path))) is not None:
             return pickle.loads(blob)
+        if not path.exists() and (cropped := _crop_from_bundle(lat, lon, radius_m, network_type)) is not None:
+            return cropped
 
     import osmnx as ox  # heavy import; only needed when a city is actually requested
 
     if path.exists() and not refresh:
         osm_graph = ox.load_graphml(path)
     else:
-        try:
-            _configure_osmnx(ox)
-            osm_graph = ox.graph_from_point((lat, lon), dist=radius_m, network_type=network_type, simplify=True)
-        except Exception as exc:  # network errors surface as many different exception types
-            raise CityLoadError(
-                f"could not fetch OpenStreetMap data for ({lat:.4f}, {lon:.4f}): {exc}. "
-                "Check the internet connection, or load a location that was cached earlier."
-            ) from exc
+        osm_graph = _download(ox, lat, lon, radius_m, network_type)
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         ox.save_graphml(osm_graph, path)
 

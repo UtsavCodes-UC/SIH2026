@@ -42,6 +42,12 @@ preset city maps and the recorded MG Road traffic. You do these steps yourself, 
    late, and GitHub pauses them after 60 days without any repository activity. As a second safety net you can add a free monitor such as
    UptimeRobot on `/health`. Keeping one service awake for a month uses 744 of Render's 750 free hours, so keep it the only free service.
 
+**Changing the radius.** The four preset cities load at once at any radius up to 2000 m, on any host and with no internet: they ship at 1200 m
+and 2000 m, and a smaller radius is cut out of the 2000 m map (measured against a real download: within 0.4% of its intersections and
+0.6% of its roads). Any other place, or a radius above 2000 m, is downloaded from OpenStreetMap, which needs the server to reach one of four
+public Overpass servers. If a host blocks them (a free Render instance could not reach the main one), the error now names each server instead
+of showing a cryptic message, and only those downloads fail. On the free 0.1 CPU a download that does work takes about 2 minutes.
+
 **What judges get.** Everything in the app, including the four cities, the recorded MG Road traffic (labelled RECORDED) and, if you
 added the key, live TomTom traffic. The map cache and any state are lost when Render restarts the service; the bundled maps are copied
 back in on start and a warm-up loads them, so a city still opens in a fraction of a second.

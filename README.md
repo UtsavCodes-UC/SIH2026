@@ -73,8 +73,9 @@ Open http://localhost:8000. If that port is taken (for example by a local `uvico
 - **Maps and recorded traffic** stay on your disk: `backend/data/cache/` and `backend/data/traffic_snapshots/` are mounted
   into the container, so they survive rebuilds and a demo prepared online (warmed cities, a saved snapshot) works offline.
   On Linux, create the two folders first (`mkdir -p backend/data/cache backend/data/traffic_snapshots`) so they belong to you.
-- The four preset cities are bundled in `backend/data/presets/` (map data © OpenStreetMap contributors, ODbL), so a fresh container loads them
-  at once with no download and no warmed cache.
+- The four preset cities are bundled in `backend/data/presets/` at 1200 m and 2000 m (map data © OpenStreetMap contributors, ODbL), so a fresh
+  container loads them at once with no download and no warmed cache, and any radius up to 2000 m for a preset is cut from the 2000 m map
+  without the internet. Other places or bigger radii are downloaded, trying four public Overpass servers in turn and naming each failure.
 - The container listens on `$PORT` when a host sets one (default 8000), so the same image runs on Google Cloud Run and similar hosts.
   How to put it on the public internet for free: [docs/DEPLOY.md](docs/DEPLOY.md).
 - The container runs a single worker on purpose: loaded maps and their traffic live in that process's memory.

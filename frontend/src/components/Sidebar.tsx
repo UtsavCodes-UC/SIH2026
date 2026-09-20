@@ -349,7 +349,8 @@ export default function Sidebar(props: Props) {
               {searching
                 ? "Start typing and pick a suggestion, so the spelling is right and the map lands exactly there. Any place OpenStreetMap knows, anywhere in the world. Or press Enter to search for exactly what you typed. "
                 : ""}
-              The first load of a place downloads it from OpenStreetMap (up to a couple of minutes); later loads are instant.
+              The ready-made places load at once at any radius up to 2000 m. Any other place, or a bigger radius, is downloaded from OpenStreetMap the
+              first time (up to a couple of minutes, longer on a slow server); later loads are instant.
             </p>
           </>
         )}
