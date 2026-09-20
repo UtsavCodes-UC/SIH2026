@@ -208,11 +208,11 @@ backend/
   app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions, CVRPLIB benchmark adapter
   app/services/    graph store, problem builder, solver dispatch, map/route views, live traffic, snapshots
   app/api/         FastAPI routers          app/schemas/   request/response models
-  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, cost_weights_tradeoff.py, time_windows_experiment.py, shortest_path_experiment.py, road_closure_experiment.py, ...), check_tomtom.py, warm_city_cache.py
+  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, cost_weights_tradeoff.py, time_windows_experiment.py, shortest_path_experiment.py, road_closure_experiment.py, demo_rehearsal.py, ...), check_tomtom.py, warm_city_cache.py
   tests/           pytest suite (run from backend/: python -m pytest tests/)
   results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
 frontend/          React + TypeScript + Leaflet + Recharts map UI
-docs/              MATH_FORMULATION.md (the problem, the cost, each algorithm), BENCHMARKS.md (results and caveats)
+docs/              MATH_FORMULATION.md (the problem, the cost, each algorithm), BENCHMARKS.md (results and caveats), DEMO_SCRIPT.md (the scripted demo)
 Dockerfile         multi-stage image: builds the UI, then the backend that serves it
 docker-compose.yml one service, one port, maps and snapshots mounted from the host
 ```
@@ -229,4 +229,5 @@ Also done: the mathematical-formulation write-up, benchmarks against the standar
 a cost model that blends time, distance and congestion, soft time windows, and the shortest-path mode
 (Dijkstra, with QPSO / PSO / GA searches measured against it), "block a road" what-ifs with a cost banner, and a
 warning for a stop that no single vehicle can carry.
-Still open for Day 3: Docker packaging, the demo script and the slides.
+A Docker image (`docker compose up --build`) and a scripted demo with a pre-flight check (`docs/DEMO_SCRIPT.md`,
+`backend/scripts/demo_rehearsal.py`) are done too. Still open for Day 3: the slides and the demo video.
