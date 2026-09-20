@@ -1,6 +1,6 @@
 # Benchmark results
 
-## Read this first — current headline (Findings 7-13)
+## Read this first — current headline (Findings 7-14)
 
 The problem statement's core claim is that QPSO gives "stronger global
 search, faster convergence, and a better balance between exploration and
@@ -73,7 +73,13 @@ the 60 s OR-Tools reference in 0.05 s, and with 1,000 iterations (about 10 s) it
 (100 customers, synthetic graphs). Starting it from the routes of a QPSO, a PSO or a GA instead adds nothing
 measurable, and given the swarm's running time as extra iterations nearest neighbour is equal or better: what beats
 OR-Tools here is the search, not the swarm. It is built for fleets and is slow on a single long tour, and it was not
-tested with the swarm inside the loop, against standard instances with known optima, or on real road graphs.
+tested with the swarm inside the loop or on real road graphs.
+
+Finding 14 then measured it against the standard CVRPLIB "X" instances, whose optimal costs are proven (22 instances,
+100-199 customers). The new search averages 2.9% above optimal after 10 s and 1.5% after two minutes (18 of 22 within
+2%), beating OR-Tools' 60 s solution, which averages 5.5% above, on 19 of 22 instances at 10 s. The app's default before
+this work averaged 10.2% above optimal. It is not a state-of-the-art solver: it stalls on some instances (4-6% above),
+and the instances are Euclidean, with no traffic or roads.
 
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
@@ -720,8 +726,7 @@ hybrid engine.
   and QPSO and PSO are indistinguishable.
 - Not supported: that this beats OR-Tools in general. It is one OR-Tools configuration (guided local search, one
   thread, 60 s, untuned) on one instance family. Nor that it is near optimal: the state of the art for this problem
-  (HGS-CVRP) would very likely beat both, and standard instances with known optima (none are used here) are the way
-  to measure how far away we are.
+  (HGS-CVRP) would very likely beat both; how far from optimal we are is measured in Finding 14.
 - Not tested: a swarm with the route search inside its loop (particles improved by the search every iteration). Only
   "swarm first, search after" was tested, so this finding does not show that a swarm cannot help in that role.
 - Not tested: other sizes, looser or tighter fleets (long routes make each iteration slower, see 5), real OSM graphs.
@@ -741,6 +746,105 @@ python scripts/route_search_ablation.py tuning --csv results/hybrid/cvrp100_rout
 python scripts/route_search_ablation.py timing
 python scripts/route_search_ablation.py tours
 ```
+
+## Finding 14 — against standard instances with proven optima, the new search is 1.5% above optimal after two minutes, and the old app default was 10% above
+
+**The question.** Findings 11-13 compared us with other heuristics (OR-Tools' guided local search, our own older
+pipelines) on synthetic instances, where nobody knows the optimum. So how far from optimal are we, and does the result
+of Finding 13 survive a benchmark we did not build?
+
+**Instances.** The CVRPLIB "X" set (Uchoa et al., 2017), the standard benchmark for capacitated vehicle routing: the 22
+instances with 100-199 customers, X-n101-k25 to X-n200-k36, every one with a **proven optimal** cost. They were fetched
+from CVRPLIB (`galgos.inf.puc-rio.br/cvrplib`) by `scripts/fetch_cvrplib.py` into `backend/data/cvrplib/` (85 KB, git-ignored
+because it is third-party data). The script saves nothing unless a file parses, its solution is feasible, and the
+solution's cost matches both the CVRPLIB listing and a recomputation from the coordinates. The instances differ from
+our synthetic ones in ways that matter: plane distances (no roads, no traffic), central, eccentric and random depots,
+random and clustered customers, several demand distributions, and 3 to 24 customers per van (our synthetic ones have
+about 6).
+
+**Scoring.** `app/data/cvrplib.py` follows the benchmark's convention: the distance between two points is the Euclidean
+distance rounded to the nearest integer, used as given (no shortest-path shortcuts, which rounding can make wrong by a
+unit), and a solution costs the sum of its legs. Checked on the real files: the published optimal solution of all 22
+instances, recomputed with our distance function, costs exactly what its file says. Every answer any solver returned
+here was re-scored from the coordinates and re-checked (each customer once, no van over capacity, fleet limit)
+without using the solver's own numbers. The fleet allowed is ceil(1.25 x k) + 2 vans, where k, from the name, is the
+fewest vans that can carry the demand; the script checks that the optimal solution itself fits in that fleet.
+
+**What was run** (one run per instance, seed 1, 8 instances at a time on one machine): the new pipeline of Finding 13
+(nearest neighbour, local search, then ILS read at cumulative 10 / 30 / 60 / 120 s); the app's default before Finding 13
+(warm-started QPSO, 40 particles x 800 iterations, then the older polish `improve_routes`); OR-Tools guided local search
+for 60 s with the cost matrix handed over as data, the same configuration as the reference in Findings 12-13
+(`scripts/ortools_reference.py --problem cvrplib`). "Gap" is (cost - optimal) / optimal, averaged over the instances.
+
+| method | mean gap | median | worst | within 2% of optimal | time per instance |
+|---|---|---|---|---|---|
+| nearest neighbour, greedy cut (the start) | 29.8% | 25.4% | 52.0% | 0 of 22 | |
+| app default until Finding 13 (warm QPSO + older polish) | 10.2% | 9.9% | 22.3% | 0 of 22 | 15.7 s (worst 22 s) |
+| OR-Tools guided local search | 5.5% | 4.8% | 13.0% | 0 of 22 | 60 s |
+| route search, local search only | 8.3% | 7.0% | 22.1% | 0 of 22 | 0.7 s (worst 2.5 s) |
+| ... + ILS, 10 s | 2.9% | 3.1% | 6.4% | 7 of 22 | 10 s |
+| ... + ILS, 30 s | 2.0% | 1.7% | 6.3% | 14 of 22 | 30 s |
+| ... + ILS, 60 s | 1.7% | 1.4% | 6.3% | 17 of 22 | 60 s |
+| ... + ILS, 120 s | **1.5%** | 1.2% | 4.6% | **18 of 22** | 120 s |
+
+At 120 s six instances are within 1% of optimal, all 22 within 5%, and X-n110-k13 was solved to optimality (0.00%
+from 60 s on). OR-Tools is within 5% on 12 of 22. The time buys less and less: going from 10 to 30 s takes 0.9 points
+off the mean gap, going from 60 to 120 s takes 0.26.
+
+**Against OR-Tools, instance by instance** (wins/ties/losses of our cost against its 60 s cost; mean cost difference,
+negative = cheaper; sign test on being cheaper):
+
+| | wins/ties/losses | mean difference | p |
+|---|---|---|---|
+| local search only (0.7 s) | 7/0/15 | +2.7% | 0.97 |
+| ILS 10 s | 19/0/3 | -2.4% | 0.0004 |
+| ILS 30 s | 21/0/1 | -3.2% | < 0.0001 |
+| ILS 120 s | 21/0/1 | -3.8% | < 0.0001 |
+
+The app default was worse than OR-Tools on all 22 (+4.5%).
+
+**What this shows.**
+
+- **Finding 13 holds on a benchmark we did not build.** On the synthetic instances local search alone was 4.9% worse than
+  OR-Tools and 1,000 ILS iterations 2.6% better; here the same two numbers are +2.7% and -2.4% (10 s) to -3.8% (120 s).
+  That the pipeline beats OR-Tools is not a quirk of our instance generator.
+- **We can now say how far from optimal.** About 3% at 10 s, 2% at 30 s and 1.5% at two minutes, on average over 22
+  standard instances, against 5.5% for OR-Tools' 60 s solution. On the synthetic instances of Finding 13 the optimum is
+  unknown, so "2.6% below OR-Tools" there could not be turned into a distance from optimal; the similar edge here, 2.4%
+  below OR-Tools at 10 s, corresponds to about 3% above optimal (an inference for the synthetic instances, a measurement
+  for these).
+- **The app default was far from optimal.** 10.2% above on average, between 4.0% and 22.3% on the individual instances,
+  and it took 15.7 s, longer than 10 s of the new search, which is at 2.9%. The local search alone (0.7 s) already beats
+  it (8.3%).
+- **What is left.** The instances that stay farthest from optimal at 120 s are X-n125-k30 (4.6%; it sat at 6.3-6.4% from
+  10 s to 60 s), X-n153-k22 (3.9%), X-n167-k10 (2.7%) and X-n200-k36 (2.2%). The search keeps only improvements, so it
+  cannot climb out of a deep local optimum; the usual remedies (accepting worse solutions with a cooling schedule as in
+  SISR, or a population with crossover as in HGS) were not tried. Dedicated solvers are reported in the literature to
+  average well under 1% on these instances; we did not run one, and this search is not in that class.
+- **By route length**, at 120 s: the 6 instances with fewer than 6 customers per van average 1.9%, the 10 with 6-13
+  average 1.3%, the 6 with more than 13 average 1.25%. Speed differs more than quality: about 25, 13 and 7 ILS iterations
+  per second respectively (8 processes running), against about 100 per second on the synthetic instances. Routes with
+  many stops are slower (Finding 13 said so); that shorter routes are also slower than on the synthetic set was not
+  investigated.
+- The ILS solutions use 0.55 vans more than the optimal ones on average.
+
+**Not tested / not supported.** Real roads, directed and congested travel times (these instances are Euclidean); more than
+200 customers; time windows. That this is a state-of-the-art CVRP solver: it is not. The 8 instances running at once
+make the 10-120 s figures depend on the machine's load, so they reproduce to within a few tenths of a percent, not
+exactly. One run per instance, no repeated seeds. OR-Tools was run as one configuration (guided local search, one thread,
+60 s); tuned or given more time it would do better.
+
+Reproduce (from `backend/`; the CSVs are in `results/cvrplib/`; the first two lines need the internet):
+
+```
+python scripts/fetch_cvrplib.py
+python scripts/cvrplib_benchmark.py --csv results/cvrplib/x_100_200.csv
+python scripts/ortools_reference.py export --problem cvrplib --dir C:/tmp/ortools_cvrplib
+python scripts/ortools_reference.py solve --problem cvrplib --dir C:/tmp/ortools_cvrplib --seconds 60 --csv results/cvrplib/x_100_200_ortools.csv
+python scripts/cvrplib_benchmark.py --from-csv results/cvrplib/x_100_200.csv
+```
+
+(`export` runs in the project environment; `solve` in any environment with `pip install ortools`.)
 
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)
 

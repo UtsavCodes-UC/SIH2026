@@ -28,6 +28,9 @@ backend/data/cache/
 # Recorded live-traffic snapshots (provider data: check the provider's terms before sharing)
 backend/data/traffic_snapshots/
 
+# Standard CVRP benchmark instances from CVRPLIB (third-party data; re-create with backend/scripts/fetch_cvrplib.py)
+backend/data/cvrplib/
+
 # Local dev-server config (absolute paths of one machine)
 .claude/
 

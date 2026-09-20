@@ -18,7 +18,9 @@ about 3% of OR-Tools on 100-stop single-vehicle tours, but a hybrid PSO built th
 an optimal split decoder closes only about 1% of that (Finding 12; the OR-Tools references were corrected, see there).
 What does close it is a stronger search between vans (2-opt\*, SWAP\*, neighbour lists, iterated local search): 2.6% below the
 OR-Tools 60 s solution in about 10 s on 100 customers, and starting it from a QPSO, PSO or GA adds nothing (Finding 13).
-Do not read this as "QPSO scales best".
+On the standard CVRPLIB instances with proven optima (100-199 customers) it averages 2.9% above optimal after 10 s and
+1.5% after two minutes, against 5.5% for OR-Tools and 10.2% for the app's earlier default (Finding 14); it is not a
+state-of-the-art solver. Do not read this as "QPSO scales best".
 
 ## Run it
 
@@ -134,10 +136,10 @@ echoed back in the response, so the same problem can be re-solved after the traf
 ```
 backend/
   app/core/        graph model, VRP formulation + decoder, QPSO, hybrid_swarm, route_search, baselines/, 2-opt, traffic, live_traffic, benchmark
-  app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions
+  app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions, CVRPLIB benchmark adapter
   app/services/    graph store, problem builder, solver dispatch, map/route views, live traffic, snapshots
   app/api/         FastAPI routers          app/schemas/   request/response models
-  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, ...), check_tomtom.py, warm_city_cache.py
+  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, ...), check_tomtom.py, warm_city_cache.py
   tests/           pytest suite (run from backend/: python -m pytest tests/)
   results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
 frontend/          React + TypeScript + Leaflet + Recharts map UI

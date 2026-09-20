@@ -9,7 +9,9 @@ numpy and change the random streams the benchmarks depend on):
          python scripts/ortools_reference.py solve  --problem cvrp --stops 100 --first-seed 500 --instances 20 --dir C:/tmp/ortools_data --seconds 60 --csv results/hybrid/cvrp100_best_known.csv
 
 `tsp` is one vehicle over `--stops` stops (instances as in Finding 11); `cvrp` is the capacitated fleet of Findings
-10-12. The cost matrix and the demands are handed to OR-Tools AS DATA (RegisterTransitMatrix,
+10-12; `cvrplib` is the standard X instances of Finding 14 (fetch them first with scripts/fetch_cvrplib.py; `--stops`,
+`--first-seed` and `--instances` do not apply, and `solve` takes every cvrplib_*.json in `--dir`). The cost matrix and the
+demands are handed to OR-Tools AS DATA (RegisterTransitMatrix,
 RegisterUnaryTransitVector). The first version of these references registered Python callbacks instead; the search
 then spends most of its time calling back into Python, and its "best known" costs were 1.1-3.3% worse than with the
 matrix (2.4% on the capacitated instances). Every gap to OR-Tools in the documentation uses the corrected references.
@@ -33,7 +35,27 @@ from pathlib import Path
 CAPACITY, UTILIZATION = 100, 0.85
 
 
+def export_cvrplib(args) -> None:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from app.data.cvrplib import default_fleet, load_instance
+    from fetch_cvrplib import CATALOGUE, DATA
+
+    args.dir.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for name in CATALOGUE:
+        if not (DATA / f"{name}.vrp").exists():
+            continue
+        instance = load_instance(DATA / f"{name}.vrp")
+        payload = {"matrix": instance.matrix(), "demands": list(instance.demands), "vehicles": default_fleet(instance), "capacity": instance.capacity}
+        (args.dir / f"cvrplib_{name}.json").write_text(json.dumps(payload), encoding="utf-8")
+        count += 1
+    print(f"exported {count} cvrplib instances to {args.dir}")
+
+
 def export(args) -> None:
+    if args.problem == "cvrplib":
+        return export_cvrplib(args)
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from app.core.vrp_formulation import RouteRequest, RoutingProblem
     from app.data.synthetic_graph_generator import generate_synthetic_graph
@@ -59,17 +81,17 @@ def export(args) -> None:
 
 
 def solve_one(job):
-    problem, stops, seed, directory, seconds = job
+    problem, key, path, seconds = job
     from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
-    data = json.loads((Path(directory) / f"{problem}{stops}_seed{seed}.json").read_text(encoding="utf-8"))
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
     matrix = data["matrix"]
     vehicles = data.get("vehicles", 1)
     manager = pywrapcp.RoutingIndexManager(len(matrix), vehicles, 0)
     routing = pywrapcp.RoutingModel(manager)
     # data, not callbacks: nothing in the search calls back into Python
     routing.SetArcCostEvaluatorOfAllVehicles(routing.RegisterTransitMatrix([[int(round(v * 1000)) for v in row] for row in matrix]))
-    if problem == "cvrp":
+    if "demands" in data:
         demand = routing.RegisterUnaryTransitVector([int(d) for d in data["demands"]])
         routing.AddDimensionWithVehicleCapacity(demand, 0, [data["capacity"]] * vehicles, True, "capacity")
 
@@ -81,7 +103,7 @@ def solve_one(job):
     solution = routing.SolveWithParameters(params)
     elapsed = time.perf_counter() - started
     if solution is None:
-        return seed, float("nan"), 0, elapsed
+        return key, float("nan"), 0, elapsed
     total, used = 0.0, 0
     for v in range(vehicles):
         index, previous, count = routing.Start(v), 0, 0
@@ -92,20 +114,24 @@ def solve_one(job):
             index = solution.Value(routing.NextVar(index))
         total += matrix[previous][0]
         used += count > 0
-    return seed, total, used, elapsed
+    return key, total, used, elapsed
 
 
 def solve(args) -> None:
-    seeds = range(args.first_seed, args.first_seed + args.instances)
-    jobs = [(args.problem, args.stops, seed, str(args.dir), args.seconds) for seed in seeds]
+    if args.problem == "cvrplib":
+        files = sorted(args.dir.glob("cvrplib_*.json"))
+        jobs = [(args.problem, f.stem[len("cvrplib_"):], str(f), args.seconds) for f in files]
+    else:
+        seeds = range(args.first_seed, args.first_seed + args.instances)
+        jobs = [(args.problem, seed, str(args.dir / f"{args.problem}{args.stops}_seed{seed}.json"), args.seconds) for seed in seeds]
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         results = list(pool.map(solve_one, jobs))
     args.csv.parent.mkdir(parents=True, exist_ok=True)
     with args.csv.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["instance_seed", "cost", "vehicles_used", "seconds"])
-        for seed, total, used, elapsed in results:
-            writer.writerow([seed, f"{total:.4f}", used, f"{elapsed:.1f}"])
+        writer.writerow(["instance" if args.problem == "cvrplib" else "instance_seed", "cost", "vehicles_used", "seconds"])
+        for key, total, used, elapsed in results:
+            writer.writerow([key, f"{total:.4f}", used, f"{elapsed:.1f}"])
     solved = [r[1] for r in results if r[1] == r[1]]
     print(f"wrote {args.csv}: mean cost {sum(solved) / len(solved):.1f} over {len(solved)} solved instances")
 
@@ -115,9 +141,9 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("export", "solve"):
         p = sub.add_parser(name)
-        p.add_argument("--problem", choices=["tsp", "cvrp"], required=True)
+        p.add_argument("--problem", choices=["tsp", "cvrp", "cvrplib"], required=True)
         p.add_argument("--stops", type=int, default=100)
-        p.add_argument("--first-seed", type=int, required=True)
+        p.add_argument("--first-seed", type=int, default=0)
         p.add_argument("--instances", type=int, default=20)
         p.add_argument("--dir", type=Path, required=True, help="where the exported instances live")
         if name == "solve":
