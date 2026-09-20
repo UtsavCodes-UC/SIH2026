@@ -1,6 +1,6 @@
 # Benchmark results
 
-## Read this first — current headline (Findings 7-18)
+## Read this first — current headline (Findings 7-19)
 
 The problem statement's core claim is that QPSO gives "stronger global
 search, faster convergence, and a better balance between exploration and
@@ -103,6 +103,12 @@ against it on 50 pairs at each of four map sizes (40 to 300 intersections). They
 smallest map and 42-44% on the largest (average gap under 1% growing to 2.6-4%), several hundred times slower, and never better than
 Dijkstra. QPSO is not better than PSO or the GA (one significant win over the GA at 40 intersections, none elsewhere). A starting
 particle that points at the target is what keeps them competitive as maps grow.
+
+Finding 19 covers road closures ("block a road"). A closed road is removed from the network, so every method plans around it. Closing
+a random road that a plan uses costs about 1% of the plan on the synthetic maps (route search), but the app's default solver varies
+by 1.5-3% between reruns of the same open network, so its what-if figure is only good to about that: 6 of 40 default comparisons
+showed a closure "saving" time, which cannot be true. The route search is steadier (under 0.3% noise) and is the better choice for
+what-ifs; the app says when a saving is an artefact.
 
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
@@ -1158,6 +1164,68 @@ Reproduce (from `backend/`; the CSV is in `results/shortest_path/`):
 ```
 python scripts/shortest_path_experiment.py --csv results/shortest_path/paths.csv
 python scripts/shortest_path_experiment.py --from-csv results/shortest_path/paths.csv
+```
+
+## Finding 19 — closing a road: the plans go around it, the cost of a closure is about 1%, and the default solver is too noisy to show it reliably
+
+**The question.** The app can close a road ("block road" on the map; MATH_FORMULATION.md, end of 2.1; `services/closures.py`,
+`PUT /api/graph/{id}/closures`) and plans again, showing what the closure cost. Closing a road removes both of its arcs from the
+network, so every solver sees it without changes. Two things need checking: that plans really avoid closed roads, and whether the
+"cost of a closure" the app reports can be trusted, given that the solvers are randomized heuristics and closing a road can never
+make the best possible plan faster.
+
+**Correctness checks** (`tests/test_closures.py`, 14 tests). A closed road leaves the map view and reopening restores the same roads
+with the same congestion; a road can be named in either direction and only listed roads stay closed; unknown roads are refused;
+traffic changes leave closures in place; a plan and a shortest path drive around a closed road (checked on the polylines) and the
+quickest route is the same again after reopening; closing every road at an intersection marks it cut off, a stop there gives a 422
+naming it, and random stops are never drawn from cut-off places. The same file tests the single-stop capacity warning (a stop whose
+demand is above one vehicle's capacity is named, exactly the capacity is fine, many are summarized).
+
+**Experiment** (`scripts/road_closure_experiment.py`). The app's 80-node synthetic network with random congestion, 20 instances at each
+of 15 and 30 stops (demands 5-25, fleet for 85% utilisation). For each: plan with the app default (QPSO, warm start, polish) and with
+the route search (3 s); close one random road the plan drives on, leaving every stop reachable; plan again with the same settings,
+seed, stops and demands; and plan the *open* network once more with a different algorithm seed, which measures the run-to-run noise
+by itself. Change = closed plan's cost against the open plan's, in percent (cost = minutes + 1000 x overload).
+
+| stops | solver | mean change | median | apparent savings | largest apparent saving | run-to-run noise, mean (max) |
+|---|---|---|---|---|---|---|
+| 15 | default | +2.64% | +1.21% | 1 of 20 | -1.4% | 2.95% (10.9%) |
+| 15 | route search | +0.92% | +0.57% | 0 of 20 | none | 0.00% (0.0%) |
+| 30 | default | +1.10% | +0.39% | 5 of 20 | -8.1% | 1.51% (4.9%) |
+| 30 | route search | +1.03% | +0.37% | 1 of 20 | -0.3% | 0.25% (2.9%) |
+
+An "apparent saving" is a closed plan cheaper than the open plan by more than 0.05%, which cannot be real. On the open networks the
+route search was cheaper than the default on 12 of 20 instances at 15 stops (equal on 8; 2.6% on average) and on all 20 at 30 stops
+(6.6%), the same direction as Finding 15.
+
+**Reading it.**
+
+- **Closing a random road the plan uses costs about 1% of the plan** (route search: +0.9% and +1.0% on average, medians about +0.4%
+  to +0.6%, worst single cases +3.5% and +9.2%). It is small because each intersection has about four roads, so a detour is
+  usually cheap; a closure in a thinner part of a real city, or several at once, costs more.
+- **The default solver's noise is as large as that effect.** Planning the same open network with a different seed changes the default's
+  cost by 1.5% to 3% on average, up to 11%, so its what-if numbers carry an error of that size: 6 of its 40 comparisons show a
+  closure that "saves" time, one by 8.1%. The route search is far steadier (0.00% and 0.25% mean noise; at 15 stops it gave the
+  identical cost on all 20 reruns, which says it reaches the same local optimum, not that the optimum is found), so its
+  numbers are the ones to trust.
+- **What the app does about it.** It compares against the plan with all roads open, and when a closure appears to save time it says
+  so in the banner: a closure cannot really save time, the earlier plan was not optimal. The default stays QPSO (a product decision,
+  unchanged); for a what-if the route search, chosen in the Algorithm menu, is the steadier instrument.
+
+**What this supports, and what it does not.**
+
+- Supported: closures are applied to the network itself, so every method avoids them; the response names cut-off stops; the banner's
+  figure is the real difference between two plans, each one as good as the solver found.
+- Not supported: reading the default solver's banner as an exact cost of the closure at a precision better than about 3%.
+- Not tested: real OpenStreetMap streets (where one-way streets and bridges make some closures far costlier), several simultaneous
+  closures, a closure that is not on the current plan (it changes nothing by construction), a route search that re-uses the old plan
+  as its starting point. One random road per instance, 20 instances per size, one algorithm seed per run.
+
+Reproduce (from `backend/`; the CSV is in `results/road_closures/`):
+
+```
+python scripts/road_closure_experiment.py --csv results/road_closures/closures.csv
+python scripts/road_closure_experiment.py --from-csv results/road_closures/closures.csv
 ```
 
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)

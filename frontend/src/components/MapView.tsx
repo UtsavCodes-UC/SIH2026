@@ -5,7 +5,7 @@ import type { GraphView, LatLng, OptimizeResponse, ShortestPathResponse } from "
 import { CONGESTION_BUCKETS, PATH_COLORS, bucketIndex, coordinateIndex, vehicleColor } from "../lib/helpers";
 import TrafficBadge from "./TrafficBadge";
 
-export type SelectMode = "off" | "depot" | "stops" | "pathA" | "pathB";
+export type SelectMode = "off" | "depot" | "stops" | "pathA" | "pathB" | "block";
 
 interface Props {
   graph: GraphView;
@@ -18,6 +18,7 @@ interface Props {
   pathResult: ShortestPathResponse | null; // drawn instead of the vehicle routes when given
   selectMode: SelectMode;
   onPickNode: (id: number) => void;
+  onPickRoad: (u: number, v: number, closed: boolean) => void; // a click on a road in "block road" mode
   onSelectMode: (mode: SelectMode) => void;
 }
 
@@ -40,7 +41,7 @@ function ClickPicker({ nodes, mode, onPick }: { nodes: GraphView["nodes"]; mode:
 
   useMapEvents({
     click(event) {
-      if (mode === "off") return;
+      if (mode === "off" || mode === "block") return;
       const target = map.latLngToContainerPoint(event.latlng);
       let best = -1;
       let bestDistance = Infinity;
@@ -57,6 +58,53 @@ function ClickPicker({ nodes, mode, onPick }: { nodes: GraphView["nodes"]; mode:
   });
   return null;
 }
+
+/** In "block road" mode, picks the road nearest a map click (within 12 px): an open road is closed, a closed one reopens. */
+function RoadPicker({
+  graph,
+  active,
+  onPick,
+}: {
+  graph: GraphView;
+  active: boolean;
+  onPick: (u: number, v: number, closed: boolean) => void;
+}) {
+  const map = useMap();
+  useMapEvents({
+    click(event) {
+      if (!active) return;
+      const coords = new Map(graph.nodes.map(([id, lat, lon]) => [id, map.latLngToContainerPoint([lat, lon])]));
+      const target = map.latLngToContainerPoint(event.latlng);
+      let best: [number, number, boolean] | null = null;
+      let bestDistance = 12;
+      const consider = (u: number, v: number, closed: boolean) => {
+        const a = coords.get(u);
+        const b = coords.get(v);
+        if (!a || !b) return;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const length2 = dx * dx + dy * dy;
+        const t = length2 === 0 ? 0 : Math.max(0, Math.min(1, ((target.x - a.x) * dx + (target.y - a.y) * dy) / length2));
+        const d = Math.hypot(target.x - (a.x + t * dx), target.y - (a.y + t * dy));
+        if (d < bestDistance) {
+          bestDistance = d;
+          best = [u, v, closed];
+        }
+      };
+      for (const [u, v] of graph.edges) consider(u, v, false);
+      for (const [u, v] of graph.closed) consider(u, v, true);
+      if (best) onPick(...(best as [number, number, boolean]));
+    },
+  });
+  return null;
+}
+
+const closedIcon = L.divIcon({
+  className: "",
+  html: `<div class="closed-badge">&#10005;</div>`,
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+});
 
 const badgeIcon = (label: string, color: string) =>
   L.divIcon({
@@ -81,7 +129,7 @@ const endpointIcon = (label: string) =>
     iconAnchor: [13, 13],
   });
 
-export default function MapView({ graph, depot, stops, demands, result, pathA, pathB, pathResult, selectMode, onPickNode, onSelectMode }: Props) {
+export default function MapView({ graph, depot, stops, demands, result, pathA, pathB, pathResult, selectMode, onPickNode, onPickRoad, onSelectMode }: Props) {
   const coords = useMemo(() => coordinateIndex(graph.nodes), [graph.nodes]);
 
   // Roads grouped by congestion band: a handful of multi-polylines instead of thousands of layers.
@@ -95,7 +143,17 @@ export default function MapView({ graph, depot, stops, demands, result, pathA, p
     return bands;
   }, [graph.edges, coords]);
 
-  const showAllNodes = selectMode !== "off" || graph.nodes.length <= 150;
+  const closedLines = useMemo(
+    () =>
+      graph.closed.flatMap(([u, v]) => {
+        const a = coords.get(u);
+        const b = coords.get(v);
+        return a && b ? [{ key: `${u}-${v}`, line: [a, b] as LatLng[], mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as LatLng }] : [];
+      }),
+    [graph.closed, coords],
+  );
+
+  const showAllNodes = (selectMode !== "off" && selectMode !== "block") || graph.nodes.length <= 150;
   const stopSet = useMemo(() => new Set(stops), [stops]);
   const solved = result !== null;
 
@@ -109,6 +167,7 @@ export default function MapView({ graph, depot, stops, demands, result, pathA, p
         />
         <FitBounds bounds={graph.summary.bounds} graphId={graph.summary.graph_id} />
         <ClickPicker nodes={graph.nodes} mode={selectMode} onPick={onPickNode} />
+        <RoadPicker graph={graph} active={selectMode === "block"} onPick={onPickRoad} />
 
         {roadBands.map((lines, i) =>
           lines.length ? (
@@ -120,6 +179,22 @@ export default function MapView({ graph, depot, stops, demands, result, pathA, p
             />
           ) : null,
         )}
+
+        {closedLines.map(({ key, line }) => (
+          <Polyline key={`closed-${key}`} positions={line} interactive={false} pathOptions={{ color: "#c0261b", weight: 4, opacity: 0.95, dashArray: "3 7" }} />
+        ))}
+        {closedLines.map(({ key, mid }) => (
+          <Marker key={`closed-badge-${key}`} position={mid} icon={closedIcon} interactive={false} />
+        ))}
+
+        {graph.cut_off.map((id) => {
+          const position = coords.get(id);
+          return position ? (
+            <CircleMarker key={`cut-${id}`} center={position} radius={6} pathOptions={{ color: "#c0261b", weight: 2, fillColor: "#fdecea", fillOpacity: 1 }}>
+              <Tooltip>{`Node ${id} is cut off by the closed roads`}</Tooltip>
+            </CircleMarker>
+          ) : null;
+        })}
 
         {showAllNodes &&
           graph.nodes.map(([id, lat, lon]) =>
@@ -215,6 +290,7 @@ export default function MapView({ graph, depot, stops, demands, result, pathA, p
             ["stops", "toggle stops"],
             ["pathA", "set A"],
             ["pathB", "set B"],
+            ["block", "block road"],
           ] as const
         ).map(([mode, label]) => (
           <button

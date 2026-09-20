@@ -14,6 +14,7 @@ from app.data.synthetic_graph_generator import generate_synthetic_graph, georefe
 from app.data.tomtom import TomTomFlowProvider
 from app.schemas.graph import (
     CityGraphRequest,
+    ClosureRequest,
     CongestionRequest,
     GraphView,
     PlaceSearchResponse,
@@ -21,6 +22,7 @@ from app.schemas.graph import (
     SyntheticGraphRequest,
     TrafficInfo,
 )
+from app.services.closures import ClosureError, set_closures
 from app.services.graph_store import GraphStore, StoredGraph, get_store
 from app.services.live_traffic_service import apply_live_traffic, get_flow_provider
 from app.services.snapshots import SnapshotNotFound, apply_snapshot
@@ -92,6 +94,22 @@ def create_city(req: CityGraphRequest, store: GraphStore = Depends(get_store)) -
 def get_graph(graph_id: str, store: GraphStore = Depends(get_store)) -> GraphView:
     stored = lookup(store, graph_id)
     with stored.lock:
+        return graph_view(stored)
+
+
+@router.put("/{graph_id}/closures", response_model=GraphView)
+def put_closures(graph_id: str, req: ClosureRequest, store: GraphStore = Depends(get_store)) -> GraphView:
+    """Block roads: the listed roads are closed, every other road is open. The next solve plans around them.
+
+    A road is named by the two intersections it joins; a two-way road is closed in both directions. `roads: []`
+    reopens everything. The view says which intersections the closures cut off from the rest of the network.
+    """
+    stored = lookup(store, graph_id)
+    with stored.lock:
+        try:
+            set_closures(stored, req.roads)
+        except ClosureError as error:
+            raise HTTPException(status_code=422, detail=str(error))
         return graph_view(stored)
 
 

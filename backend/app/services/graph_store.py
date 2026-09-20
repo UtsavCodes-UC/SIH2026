@@ -32,6 +32,9 @@ class StoredGraph:
     key: str | None = None  # identifies the downloaded map (city graphs); ties snapshots to it
     traffic: TrafficInfo | None = None  # where the current congestion came from
     live_cache: LiveReading | None = None
+    # Closed roads: the arcs taken out of the graph, so that reopening restores them exactly (see services/closures.py).
+    # Keyed by the road's two intersections; each entry lists (u, v, edge data) for every direction that was removed.
+    closed: dict[frozenset, list[tuple]] = field(default_factory=dict)
     # Requests run in a worker-thread pool; solving reads edge weights and the traffic
     # endpoints rewrite them, so per-graph access is serialized.
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)

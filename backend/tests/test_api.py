@@ -387,7 +387,8 @@ def test_infeasible_by_construction_problems_are_flagged():
     benchmark = client.post("/api/benchmark", json={"graph_id": graph_id, **tight, **FAST}).json()
 
     for warnings in (optimized["warnings"], benchmark["warnings"]):
-        assert len(warnings) == 1 and "exceeds the fleet's capacity" in warnings[0]
+        assert "exceeds the fleet's capacity" in warnings[0]
+        assert all("more than one vehicle can carry" in w for w in warnings[1:])  # at most the single-stop warning besides
     assert optimized["feasible"] is False and optimized["capacity_violation"] > 0
     assert all(a["capacity_violation"] > 0 for a in benchmark["algorithms"])
     assert solve(graph_id, n_stops=8)["warnings"] == []  # the auto-sized fleet is never flagged

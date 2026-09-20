@@ -9,6 +9,7 @@ import {
   optimize,
   runBenchmark,
   saveSnapshot,
+  setClosures,
   setCongestion,
   shortestPath,
 } from "./api/client";
@@ -30,7 +31,7 @@ import MapView, { type SelectMode } from "./components/MapView";
 import PathPanel from "./components/PathPanel";
 import ResultsPanel from "./components/ResultsPanel";
 import Sidebar from "./components/Sidebar";
-import { centralNode, normalizedWeights, sample } from "./lib/helpers";
+import { centralNode, fmt, normalizedWeights, sample } from "./lib/helpers";
 import { type Busy, DEFAULT_PARAMS, type SolverParams } from "./lib/params";
 
 const BUSY_LABEL: Record<Exclude<Busy, null>, string> = {
@@ -41,6 +42,17 @@ const BUSY_LABEL: Record<Exclude<Busy, null>, string> = {
   live: "Fetching live traffic from TomTom (about 25 seconds)…",
   path: "Finding the route…",
 };
+
+/** One line of the what-if banner: how a plan or route changed when the roads did. */
+function compare(subject: string, beforeMin: number, beforeKm: number, afterMin: number, afterKm: number, closing: boolean): string {
+  const dMin = afterMin - beforeMin;
+  if (Math.abs(dMin) < 0.05 && Math.abs(afterKm - beforeKm) < 0.005) return `${subject}: unchanged at ${fmt(afterMin)} min, ${fmt(afterKm)} km.`;
+  const signed = (x: number, unit: string) => `${x >= 0 ? "+" : "-"}${fmt(Math.abs(x))} ${unit}`;
+  const pct = beforeMin > 0 ? ` (${dMin >= 0 ? "+" : "-"}${fmt(Math.abs((100 * dMin) / beforeMin), 1)}%)` : "";
+  const line = `${subject}: ${fmt(beforeMin)} → ${fmt(afterMin)} min, ${signed(dMin, "min")}${pct}; ${fmt(beforeKm)} → ${fmt(afterKm)} km.`;
+  // Closing a road cannot shorten the best possible plan, so a saving means the earlier plan was not the best the search could find.
+  return closing && dMin < -0.05 ? `${line} A closure cannot really save time: the earlier plan was not optimal (the search is heuristic and varies from run to run).` : line;
+}
 
 export default function App() {
   const [graph, setGraph] = useState<GraphView | null>(null);
@@ -68,6 +80,10 @@ export default function App() {
   const [trafficStatus, setTrafficStatus] = useState<TrafficStatus | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  // What the last road closure (or reopening) did to the plan and the route, shown until the next change.
+  const [whatIf, setWhatIf] = useState<{ head: string; lines: string[] } | null>(null);
+  // The plan and the route as they were with every road open, so each closure is compared with that and not with the previous click.
+  const [openRoads, setOpenRoads] = useState<{ plan?: [number, number]; path?: [number, number] } | null>(null);
 
   async function run<T>(kind: Exclude<Busy, null>, action: () => Promise<T>): Promise<T | undefined> {
     setBusy(kind);
@@ -87,6 +103,8 @@ export default function App() {
     setBenchmark(null);
     setDemands(null);
     setWindows(null);
+    setWhatIf(null);
+    setOpenRoads(null);
   };
 
   function refreshSnapshots(view: GraphView) {
@@ -105,7 +123,7 @@ export default function App() {
     setPathB(null);
     setPathResult(null);
     setDepot(nextDepot);
-    setStops(sample(view.nodes.map((n) => n[0]).filter((id) => id !== nextDepot), nStops));
+    setStops(sample(view.nodes.map((n) => n[0]).filter((id) => id !== nextDepot && !view.cut_off.includes(id)), nStops));
     invalidate();
   }
 
@@ -163,6 +181,7 @@ export default function App() {
       setWindows(out.problem.time_windows);
       setTab("results");
     }
+    return out;
   }
 
   async function doBenchmark() {
@@ -206,6 +225,53 @@ export default function App() {
       setPathResult(out);
       setTab("path");
     }
+    return out;
+  }
+
+  /** Close exactly these roads, then plan again so the effect is visible (when re-optimizing automatically is on). */
+  async function changeClosures(roads: [number, number][]) {
+    if (!graph) return;
+    const planBefore = result;
+    const pathBefore = pathResult;
+    const pathTime = (r: ShortestPathResponse) => {
+      const best = r.results.find((x) => x.algorithm === "dijkstra") ?? r.results[0];
+      return [best.time_min, best.distance_km] as [number, number];
+    };
+    // with every road open now, remember how things stood; with closures already in force the baseline was taken earlier
+    const base = graph.closed.length === 0
+      ? { plan: planBefore ? ([planBefore.total_time_min, planBefore.total_distance_km] as [number, number]) : undefined, path: pathBefore ? pathTime(pathBefore) : undefined }
+      : openRoads;
+    const view = await run("traffic", () => setClosures(graph.summary.graph_id, roads));
+    if (!view) return;
+    setGraph(view);
+    setWhatIf(null);
+    setOpenRoads(view.closed.length > 0 ? base : null);
+    if (!autoReoptimize) return;
+    const n = view.closed.length;
+    const lines: string[] = [];
+    if (planBefore) {
+      const out = await doOptimize();
+      const fromOpen = n > 0 && base?.plan !== undefined;
+      const was = fromOpen ? base!.plan! : ([planBefore.total_time_min, planBefore.total_distance_km] as [number, number]);
+      if (out) lines.push(compare(fromOpen ? "Delivery plan, against all roads open" : "Delivery plan", was[0], was[1], out.total_time_min, out.total_distance_km, n > 0));
+      else setResult(null); // the old plan drives on roads that are now closed
+    }
+    if (pathBefore) {
+      const out = await doShortestPath(pathBefore.results.length > 1);
+      const fromOpen = n > 0 && base?.path !== undefined;
+      const was = fromOpen ? base!.path! : pathTime(pathBefore);
+      if (out) {
+        const now = pathTime(out);
+        lines.push(compare(fromOpen ? "Route A to B, against all roads open" : "Route A to B", was[0], was[1], now[0], now[1], n > 0));
+      } else setPathResult(null);
+    }
+    if (lines.length) setWhatIf({ head: n === 0 ? "All roads reopened" : `${n} road${n === 1 ? "" : "s"} closed`, lines });
+  }
+
+  function pickRoad(u: number, v: number, isClosed: boolean) {
+    if (!graph || busy) return;
+    const same = ([a, b]: [number, number]) => (a === u && b === v) || (a === v && b === u);
+    changeClosures(isClosed ? graph.closed.filter((road) => !same(road)) : [...graph.closed, [u, v]]);
   }
 
   async function doTraffic(mode: CongestionMode, snapshotId?: string) {
@@ -214,6 +280,8 @@ export default function App() {
     if (mode === "live") getTrafficStatus().then(setTrafficStatus).catch(() => undefined); // a key may have been added since the page loaded
     if (!view) return;
     setGraph(view);
+    setWhatIf(null);
+    setOpenRoads(null); // new traffic: the earlier open-road figures no longer describe the same conditions
     if (autoReoptimize && result) await doOptimize();
     if (autoReoptimize && pathResult) await doShortestPath(pathResult.results.length > 1);
   }
@@ -248,7 +316,7 @@ export default function App() {
 
   function randomStops() {
     if (!graph) return;
-    setStops(sample(graph.nodes.map((n) => n[0]).filter((id) => id !== depot), nStops));
+    setStops(sample(graph.nodes.map((n) => n[0]).filter((id) => id !== depot && !graph.cut_off.includes(id)), nStops));
     invalidate();
   }
 
@@ -273,15 +341,24 @@ export default function App() {
           setStops([]);
           invalidate();
         }}
-        onOptimize={doOptimize}
+        onOptimize={() => {
+          setOpenRoads(null); // a deliberate new solve: earlier open-road figures may be for other settings
+          doOptimize();
+        }}
         onBenchmark={doBenchmark}
         pathA={pathA}
         pathB={pathB}
-        onFindPath={doShortestPath}
+        onFindPath={(all) => {
+          setOpenRoads((base) => (base ? { ...base, path: undefined } : base));
+          doShortestPath(all);
+        }}
         onTraffic={doTraffic}
         trafficStatus={trafficStatus}
         snapshots={snapshots}
         onSaveSnapshot={doSaveSnapshot}
+        closedRoads={graph?.closed.length ?? 0}
+        cutOff={graph?.cut_off.length ?? 0}
+        onReopenAll={() => changeClosures([])}
       />
 
       <main className="main">
@@ -298,6 +375,7 @@ export default function App() {
               pathResult={tab === "path" ? pathResult : null}
               selectMode={selectMode}
               onPickNode={pickNode}
+              onPickRoad={pickRoad}
               onSelectMode={setSelectMode}
             />
           ) : (
@@ -306,6 +384,19 @@ export default function App() {
           {busy && graph && (
             <div className="banner busy" role="status">
               <span className="spinner" aria-hidden /> {busyLabel(busy)}
+            </div>
+          )}
+          {whatIf && !busy && (
+            <div className="banner whatif" role="status">
+              <div>
+                <strong>What-if · {whatIf.head}</strong>
+                {whatIf.lines.map((line) => (
+                  <div key={line}>{line}</div>
+                ))}
+              </div>
+              <button className="banner-close" onClick={() => setWhatIf(null)} aria-label="Dismiss">
+                ×
+              </button>
             </div>
           )}
           {notice && (

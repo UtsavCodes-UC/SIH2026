@@ -109,6 +109,14 @@ class TrafficGraph:
             return nx.shortest_path(self._g, source, target, weight="weight")
         return nx.shortest_path(self._g, source, target, weight=lambda u, v, edge: weights.arc_cost(edge))
 
+    def mutually_reachable(self, node) -> set:
+        """The nodes a vehicle can drive to from `node` and get back from (`node` included). Stops outside this set
+        cannot be part of a tour that starts and ends at `node`; roads closed in the app are what usually cut them off."""
+        g = self._g
+        if not g.is_directed():
+            return nx.node_connected_component(g, node)
+        return (nx.descendants(g, node) & nx.ancestors(g, node)) | {node}
+
     def shortest_path_time(self, source, target) -> float:
         return nx.shortest_path_length(self._g, source, target, weight="weight")
 

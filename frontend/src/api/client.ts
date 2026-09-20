@@ -51,6 +51,10 @@ export const createCityGraph = (body: { lat?: number; lon?: number; radius_m: nu
 export const setCongestion = (graphId: string, mode: CongestionMode, seed?: number, snapshotId?: string) =>
   http.post<GraphView>(`/graph/${graphId}/congestion`, { mode, seed, snapshot_id: snapshotId }).then((r) => r.data);
 
+/** Block exactly these roads (each named by its two intersections); every other road is open. */
+export const setClosures = (graphId: string, roads: [number, number][]) =>
+  http.put<GraphView>(`/graph/${graphId}/closures`, { roads }).then((r) => r.data);
+
 export const getTrafficStatus = () => http.get<TrafficStatus>("/traffic/status").then((r) => r.data);
 
 export const listSnapshots = (graphId: string) =>

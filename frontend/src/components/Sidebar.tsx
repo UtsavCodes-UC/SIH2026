@@ -30,6 +30,9 @@ interface Props {
   trafficStatus: TrafficStatus | null;
   snapshots: SnapshotInfo[];
   onSaveSnapshot: () => void;
+  closedRoads: number;
+  cutOff: number;
+  onReopenAll: () => void;
 }
 
 const ALGORITHMS: Algorithm[] = ["qpso", "pso", "ga", "nearest_neighbor", "route_search"];
@@ -395,8 +398,28 @@ export default function Sidebar(props: Props) {
 
         <label className="check">
           <input type="checkbox" checked={props.autoReoptimize} onChange={(e) => props.onAutoReoptimize(e.target.checked)} />
-          Re-optimize automatically after traffic changes
+          Re-optimize automatically after traffic or road changes
         </label>
+
+        <h3 className="subhead">Road closures (what-if)</h3>
+        <p className="hint">
+          Press <strong>block road</strong> on the map toolbar, then click a road to close it; click a closed road to reopen it. Plans and
+          routes avoid closed roads, and a banner shows what the closure cost.
+        </p>
+        <div className="row">
+          <span className="grow graph-info">
+            Closed roads: <strong>{props.closedRoads}</strong>
+          </span>
+          <button className="btn btn-secondary" disabled={!idle || props.closedRoads === 0} onClick={props.onReopenAll}>
+            Reopen all
+          </button>
+        </div>
+        {props.cutOff > 0 && (
+          <p className="hint warn">
+            {props.cutOff} intersection{props.cutOff === 1 ? " is" : "s are"} cut off from the rest of the network (red circles on the map). Stops there
+            cannot be served.
+          </p>
+        )}
       </section>
 
       <section>

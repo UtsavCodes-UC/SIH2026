@@ -84,6 +84,14 @@ cd backend && python scripts/warm_city_cache.py
    automatically, so you can watch routes detour around a jam. On a real city, *Fetch live traffic*
    loads real TomTom readings instead (see below). A badge on the map and on every result always says
    where the congestion came from: LIVE, RECORDED, SIMULATED or FREE FLOW.
+
+   **Road closures (what-if).** Press *block road* in the map toolbar and click a road to close it (it turns red with a
+   cross); click a closed road to reopen it, or press *Reopen all*. Closed roads are removed from the network, so every plan
+   and every route goes around them. With *Re-optimize automatically* ticked, the plan and the A-to-B route are recomputed at
+   once and a banner says what the closures cost against the same plan with every road open (minutes and kilometres). Close all
+   the roads around an intersection and it is marked as cut off; a stop there cannot be served, and the API says which stops
+   are affected. The search is heuristic, so the "cost" of a closure can come out slightly negative; the banner says so when it
+   happens (docs/BENCHMARKS.md, Finding 19).
 5. **Shortest path** — the quickest route between two places. Press *set A* and *set B* in the map toolbar and click
    the map, pick a method, then *Find route* (or *Compare all four*). **Dijkstra** is exact and takes
    milliseconds; **QPSO**, **classical PSO** and a **genetic algorithm** search for the same route with
@@ -145,6 +153,7 @@ Interactive docs at http://localhost:8000/docs.
 | `GET /api/graph/presets` · `GET /api/graph/{id}` | ready-made places · read a network back |
 | `GET /api/graph/places?q=` | place-name suggestions (optional `lat`/`lon` to prefer results near a map): presets and remembered places first, then Photon |
 | `POST /api/graph/{id}/congestion` | `random` / `rush_hour` / `clear` (simulated), `live` (TomTom, real cities), `snapshot` (replay a recording): the dynamic weight update |
+| `PUT /api/graph/{id}/closures` | block roads: body `{"roads": [[u, v], ...]}` is the complete set of closed roads (each named by its two intersections; both directions close), so a road left out reopens and `[]` reopens everything. The returned view lists `closed` roads and the `cut_off` intersections. A stop that the closures cut off is a 422 naming it |
 | `GET /api/traffic/status` | whether a TomTom key is configured (never returns the key) |
 | `GET` · `POST /api/graph/{id}/traffic/snapshots` | list recorded traffic for a map · record the current real traffic |
 | `POST /api/optimize` | solve one problem; routes come back as polylines along the roads. `algorithm` is `qpso` (default), `pso`, `ga`, `nearest_neighbor` or `route_search`; the last takes `time_limit_sec` (1-60, default 10) and ignores the swarm settings and `polish` |
@@ -164,6 +173,10 @@ re-solved. `route_search` and the exact baseline do not support windows (a 422 a
 Anything left out of a problem (depot, stops, demands, fleet size) is filled in from `seed` and
 echoed back in the response, so the same problem can be re-solved after the traffic changes.
 
+Both solve endpoints return `warnings` for problems that cannot be planned cleanly: total demand above the fleet's capacity,
+any single stop whose demand is larger than one vehicle's capacity (it is named, with its demand), and windows that close
+before a van could get there.
+
 ## Repo layout
 
 ```
@@ -172,7 +185,7 @@ backend/
   app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions, CVRPLIB benchmark adapter
   app/services/    graph store, problem builder, solver dispatch, map/route views, live traffic, snapshots
   app/api/         FastAPI routers          app/schemas/   request/response models
-  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, cost_weights_tradeoff.py, time_windows_experiment.py, shortest_path_experiment.py, ...), check_tomtom.py, warm_city_cache.py
+  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, cost_weights_tradeoff.py, time_windows_experiment.py, shortest_path_experiment.py, road_closure_experiment.py, ...), check_tomtom.py, warm_city_cache.py
   tests/           pytest suite (run from backend/: python -m pytest tests/)
   results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
 frontend/          React + TypeScript + Leaflet + Recharts map UI
@@ -189,5 +202,6 @@ QPSO pipeline still the default. The hybrid engine and the optimal split decoder
 built and benchmarked but not wired into the API or the UI.
 Also done: the mathematical-formulation write-up, benchmarks against the standard CVRPLIB instances,
 a cost model that blends time, distance and congestion, soft time windows, and the shortest-path mode
-(Dijkstra, with QPSO / PSO / GA searches measured against it).
-Still open for Day 3: "block a road" what-if events, Docker packaging and the demo script.
+(Dijkstra, with QPSO / PSO / GA searches measured against it), "block a road" what-ifs with a cost banner, and a
+warning for a stop that no single vehicle can carry.
+Still open for Day 3: Docker packaging, the demo script and the slides.

@@ -62,6 +62,15 @@ live traffic   for a measured road segment:  slowdown = min(6, max(1, free_flow_
 recorded       a saved set of gamma_a values replayed later
 ```
 
+**Closed roads (what-ifs).** A closed set C of roads (each a pair of intersections) is a change to the network itself, not to its
+weights: both arcs of a closed two-way road are taken out of A (`closures.py`), and reopening puts them back with the values they
+had. Every leg time t(u, v) and every shortest path below is then computed on G minus C, so plans and routes avoid the closed roads
+without any solver knowing about them, and closing a road can only increase a leg time or make it infinite. A tour that starts and
+ends at the depot exists only if the depot and every stop lie in one strongly connected part of G minus C; the API checks this
+before solving and names the stops that the closures have cut off (`TrafficGraph.mutually_reachable`), and reports which intersections
+fall outside the biggest such part. Because the heuristics are randomized, a re-plan after a closure can come out cheaper than the
+plan before it even though the best possible plan cannot (Finding 19).
+
 ### 2.2 Leg times
 
 Only travel between the depot and the stops matters. For a problem with depot 0 and stops S = {1, ..., n} we compute, once,
@@ -104,7 +113,9 @@ The second term is a **soft capacity constraint**: any load above Q is penalized
 (`penalty_weight`). This ranks an overloaded plan far below every feasible one but lets the search pass *through*
 infeasible plans on its way between feasible ones. Feasibility is always reported separately (the API returns `feasible` and
 `capacity_violation`, and the UI shows "all respected" or the overload); with the app's auto-sized fleet a feasible plan
-normally exists. If the total demand exceeds the fleet's capacity none does, and the API says so (`problem_warnings`).
+normally exists. If the total demand exceeds the fleet's capacity none does, and the API says so (`problem_warnings`); it also
+names every stop whose own demand q_i is larger than Q, since whichever van serves it is overloaded by at least q_i - Q however
+many vans there are.
 
 By default the objective is the **sum of driving times** (alpha = 1); with the other weights T(R) above is the route's total
 arc cost, a blend of minutes, kilometres and congestion delay (the "Travel time / Distance / Congestion" sliders in the UI).

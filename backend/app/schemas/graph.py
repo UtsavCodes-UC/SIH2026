@@ -71,6 +71,13 @@ class CongestionRequest(BaseModel):
         return self
 
 
+class ClosureRequest(BaseModel):
+    """The complete set of closed roads. Each road is given by the two intersections it joins (either order; a
+    two-way road is closed in both directions). Roads left out of the list are open again."""
+
+    roads: list[tuple[int, int]] = Field(default_factory=list, max_length=2000)
+
+
 class TrafficInfo(BaseModel):
     """Where the congestion currently on the graph came from. The UI must show this next to the map:
     simulated or recorded traffic is never to be presented as live."""
@@ -114,6 +121,7 @@ class GraphSummary(BaseModel):
     bounds: tuple[tuple[float, float], tuple[float, float]]  # (south, west), (north, east)
     mean_congestion: float
     traffic: TrafficInfo
+    closed_roads: int = 0
 
 
 class GraphView(BaseModel):
@@ -121,3 +129,5 @@ class GraphView(BaseModel):
     # nodes: [id, lat, lon]; edges: [u, v, congestion] with one entry per road (the worse direction's congestion)
     nodes: list[list[float]]
     edges: list[list[float]]
+    closed: list[list[int]] = []  # [u, v] for every closed road (these are not in `edges`)
+    cut_off: list[int] = []  # intersections that can no longer be driven to and from the rest of the network

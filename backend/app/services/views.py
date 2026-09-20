@@ -7,6 +7,7 @@ from app.core.graph_model import TrafficGraph
 from app.core.vrp_formulation import RoutingProblem
 from app.schemas.graph import GraphSummary, GraphView
 from app.schemas.solve import CostWeightsSpec, ResolvedProblem, RouteOut, StopTimingOut, TimeWindowSpec
+from app.services.closures import closed_roads, cut_off_nodes
 from app.services.graph_store import StoredGraph
 
 
@@ -29,6 +30,7 @@ def graph_summary(stored: StoredGraph) -> GraphSummary:
         bounds=((min(lats), min(lons)), (max(lats), max(lons))),
         mean_congestion=_mean_congestion(graph),
         traffic=stored.traffic,
+        closed_roads=len(stored.closed),
     )
 
 
@@ -42,7 +44,9 @@ def graph_view(stored: StoredGraph) -> GraphView:
         key = (u, v) if (v, u) not in roads else (v, u)
         roads[key] = max(roads.get(key, 0.0), data["congestion_factor"])
     edges = [[u, v, congestion] for (u, v), congestion in roads.items()]
-    return GraphView(summary=graph_summary(stored), nodes=nodes, edges=edges)
+    return GraphView(
+        summary=graph_summary(stored), nodes=nodes, edges=edges, closed=closed_roads(stored), cut_off=cut_off_nodes(stored)
+    )
 
 
 def path_points(graph: TrafficGraph, path) -> list[list[float]]:
@@ -112,6 +116,15 @@ def problem_warnings(problem: RoutingProblem) -> list[str]:
             f"{request.vehicle_capacity:g} = {fleet_capacity:g}): at least {total_demand - fleet_capacity:g} units of "
             "overload are unavoidable, so every cost includes a constant penalty and comparisons between "
             "algorithms are dominated by it. Add vehicles or raise the capacity."
+        )
+    too_big = [(stop, demand) for stop, demand in request.demands.items() if demand > request.vehicle_capacity]
+    if too_big:
+        shown = ", ".join(f"stop {stop} ({demand:g})" for stop, demand in too_big[:5])
+        more = f" and {len(too_big) - 5} more" if len(too_big) > 5 else ""
+        warnings.append(
+            f"{len(too_big)} stop(s) ask for more than one vehicle can carry ({request.vehicle_capacity:g}): {shown}{more}. "
+            "Whichever van serves them is overloaded, and the overload is penalized in every plan, so the cost includes "
+            "a constant that no algorithm can remove. Raise the capacity or lower those demands."
         )
     if problem.has_time_windows:
         depot = request.depot

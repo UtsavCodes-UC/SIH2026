@@ -39,12 +39,15 @@ export interface GraphSummary {
   bounds: [LatLng, LatLng]; // [south, west], [north, east]
   mean_congestion: number;
   traffic: TrafficInfo;
+  closed_roads: number;
 }
 
 export interface GraphView {
   summary: GraphSummary;
   nodes: [number, number, number][]; // id, lat, lon
   edges: [number, number, number][]; // u, v, congestion of the worse direction
+  closed: [number, number][]; // the roads that are blocked (not in `edges`)
+  cut_off: number[]; // intersections the closures have cut off from the rest of the network
 }
 
 export interface Preset {

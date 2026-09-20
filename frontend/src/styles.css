@@ -656,6 +656,25 @@ label.weight > span {
   margin: 14px 0 6px;
 }
 
+.banner.whatif {
+  bottom: 24px;
+  background: #fff4e0;
+  color: #7a4300;
+  border: 1px solid #f0cf94;
+}
+
+.closed-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #c0261b;
+  color: #fff;
+  font: 700 12px/17px system-ui, sans-serif;
+  text-align: center;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
 .banner.ok {
   top: 12px;
   background: #e6f6ec;

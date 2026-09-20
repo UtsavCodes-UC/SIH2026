@@ -53,7 +53,8 @@ def shortest_path(req: ShortestPathRequest, store: GraphStore = Depends(get_stor
                     )
                 )
         except NoPathError as error:
-            raise InvalidProblemError(str(error)) from error
+            hint = f" ({len(stored.closed)} closed road(s) may have cut it off; reopen one to restore the route)" if stored.closed else ""
+            raise InvalidProblemError(f"{error}{hint}") from error
         traffic = stored.traffic
 
     return ShortestPathResponse(

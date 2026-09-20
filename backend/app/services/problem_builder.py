@@ -39,6 +39,8 @@ def resolve_problem(stored: StoredGraph, spec: ProblemSpec) -> RouteRequest:
     if depot not in known:
         raise InvalidProblemError(f"depot {depot} is not a node of this graph")
 
+    reachable = stored.graph.mutually_reachable(depot)  # closed roads can cut places off
+
     if spec.stops:
         stops = list(spec.stops)
         if len(set(stops)) != len(stops):
@@ -48,10 +50,17 @@ def resolve_problem(stored: StoredGraph, spec: ProblemSpec) -> RouteRequest:
             raise InvalidProblemError(f"stops not in this graph: {unknown[:5]}")
         if depot in stops:
             raise InvalidProblemError("the depot cannot also be a stop")
+        cut_off = [s for s in stops if s not in reachable]
+        if cut_off:
+            cause = f"the {len(stored.closed)} closed road(s)" if stored.closed else "the road network's one-way streets"
+            raise InvalidProblemError(
+                f"{len(cut_off)} stop(s) are not reachable from the depot and back because of {cause}: {cut_off[:8]}. "
+                "Reopen a road, move the depot, or pick other stops."
+            )
     else:
-        candidates = [n for n in node_ids if n != depot]
+        candidates = [n for n in node_ids if n != depot and n in reachable]
         if not candidates:
-            raise InvalidProblemError("the graph has no nodes besides the depot")
+            raise InvalidProblemError("the graph has no nodes the depot can reach besides itself")
         stops = rng.sample(candidates, min(spec.n_stops, len(candidates)))
 
     if spec.demands is not None:
