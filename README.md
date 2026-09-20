@@ -21,7 +21,9 @@ What does close it is a stronger search between vans (2-opt\*, SWAP\*, neighbour
 OR-Tools 60 s solution in about 10 s on 100 customers, and starting it from a QPSO, PSO or GA adds nothing (Finding 13).
 On the standard CVRPLIB instances with proven optima (100-199 customers) it averages 2.9% above optimal after 10 s and
 1.5% after two minutes, against 5.5% for OR-Tools and 10.2% for the app's earlier default (Finding 14); it is not a
-state-of-the-art solver. Do not read this as "QPSO scales best".
+state-of-the-art solver. Where the true optimum can be computed (10-14 stops with several vans, checked by a new exact solver),
+the app's default pipeline is on average 1.5-3.6% above it and the route search option is exactly optimal on all 150 instances
+tested (Finding 20). Do not read this as "QPSO scales best".
 
 ## Run it
 

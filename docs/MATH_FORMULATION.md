@@ -328,8 +328,8 @@ The comparisons in BENCHMARKS.md follow one method (`benchmark.py` and the scrip
 - **Significance:** the exact one-sided sign test. With W wins and L losses (ties dropped) the p-value is
   P(at least W wins in W + L fair coin flips) = sum_{k=W}^{W+L} C(W+L,k) / 2^(W+L). It ignores the size of a win, which keeps it
   conservative.
-- **Gap to a reference:** gap = 100 * (cost - reference) / reference, where the reference is the exact Held-Karp optimum (up
-  to 16 stops, one van), OR-Tools' guided local search, or the proven optimum of a standard CVRPLIB instance (Finding 14).
+- **Gap to a reference:** gap = 100 * (cost - reference) / reference, where the reference is the exact optimum (Held-Karp for
+  one van up to 16 stops; for several vans up to 15 stops the exact capacitated solver of `exact_cvrp.py`, Finding 20), OR-Tools' guided local search, or the proven optimum of a standard CVRPLIB instance (Finding 14).
   Positive means worse than the reference.
 - **Standard instances** (CVRPLIB "X" set) are scored with the benchmark's own rule: Euclidean distances rounded to the nearest
   integer, no shortest-path shortcuts (`app/data/cvrplib.py`).
@@ -344,6 +344,7 @@ The comparisons in BENCHMARKS.md follow one method (`benchmark.py` and the scrip
 | QPSO iteration | O(P n log n) | `qpso.py` |
 | 2-opt pass | O(n^2), exact delta in O(1) | `local_search.two_opt` |
 | Held-Karp | O(2^n n^2), n <= 16 | `exact_held_karp.py` |
+| Exact capacitated optimum (Held-Karp per subset, then the best split into at most m subsets) | O(2^n n^2 + m 3^n), n <= 15 (1.2 s at 14 stops) | `exact_cvrp.py` |
 | Route search / ILS | neighbour lists + a work queue; about 10 ms per ILS iteration (measured) | `route_search.py` |
 | Shortest path, exact | O(\|A\| log \|N\|) | `shortest_path.dijkstra_path` |
 | Shortest path, swarm search | O(P d) per iteration for the update, plus one decoding walk per particle | `shortest_path.search_path` |

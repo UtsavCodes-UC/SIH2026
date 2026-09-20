@@ -1,6 +1,6 @@
 # Benchmark results
 
-## Read this first — current headline (Findings 7-19)
+## Read this first — current headline (Findings 7-20)
 
 The problem statement's core claim is that QPSO gives "stronger global
 search, faster convergence, and a better balance between exploration and
@@ -109,6 +109,12 @@ a random road that a plan uses costs about 1% of the plan on the synthetic maps 
 by 1.5-3% between reruns of the same open network, so its what-if figure is only good to about that: 6 of 40 default comparisons
 showed a closure "saving" time, which cannot be true. The route search is steadier (under 0.3% noise) and is the better choice for
 what-ifs; the app says when a saving is an artefact.
+
+Finding 20 answers "how near-optimal?" where the optimum can be computed exactly (a new exact solver, checked against exhaustive search). On
+problems of 10-14 stops with several vans, the app's default QPSO pipeline is on average 1.5-3.6% above the optimum (exactly optimal on 22, 12 and 7 of 30
+instances; worst cases 12-18%), and most of that comes from the polish. The route search option found the exact optimum on all 150 instances
+(several vans to 14 stops, one van to 16) within 3 s. QPSO's raw advantage over classical PSO reproduces (significant at 10 and 12 stops) and disappears
+after the polish; against the genetic algorithm it is not significant. This replaces the 2.4% of Finding 1.
 
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
@@ -1228,6 +1234,105 @@ python scripts/road_closure_experiment.py --csv results/road_closures/closures.c
 python scripts/road_closure_experiment.py --from-csv results/road_closures/closures.csv
 ```
 
+## Finding 20 — against the exact optimum on small problems, the default QPSO pipeline is 1.5-3.6% above it, and the route search is exactly optimal every time
+
+**The question.** The problem statement asks for near-optimal routes. Findings 14-15 measured against the proven optima of 100-199-customer benchmark
+instances and against OR-Tools, but the gap to the *true* optimum on small problems was last measured in Finding 1, with a 2-opt polish that had a bug
+(Finding 8), so its 2.4% is superseded and must not be quoted. This re-measures it with the current code, on the app's own problem.
+
+**The exact reference.** `core/baselines/exact_cvrp.py` computes the exact optimum of the objective every solver minimizes: driving cost (with the
+request's cost weights) plus 1,000 per unit of overload, over at most `n_vehicles` routes. It runs Held-Karp over subsets, prices each subset as one
+route (overload penalty included), then finds the best split into at most `n_vehicles` subsets. It takes 1.2 s at 14 stops with several vans and 4.5 s
+at 16 stops with one. It is checked in `tests/test_exact_cvrp.py` (16 tests): it equals exhaustive search over every assignment of stops to vans and
+every visiting order at 6 stops (five fleet and capacity settings, two of them with unavoidable overload) and at 8 stops, equals Held-Karp for one
+van, respects blended cost weights, and its routes reproduce its own cost. In the 150 instances below no solver ever came out cheaper than it
+(asserted in the script), which would have exposed an over-priced optimum.
+
+**Experiment** (`scripts/exact_gap_experiment.py`). 30 random instances per size on the app's synthetic network (80 intersections, 8 km, random
+congestion); every method sees the same instances, one algorithm seed per instance. **A** is the app's problem: 10, 12 and 14 stops, demands 5-25,
+capacity 100, a fleet for 85% utilisation (2.2, 2.8 and 2.9 vans on average). **B** is one van and a plain tour, 12 and 16 stops. Swarms run 40 x 800
+with warm start and polish as in the app, unless marked "no warm start"; the route search has 3 s, which these sizes do not need (it took 0.9-2.7 s on
+average). Gap = 100 x (cost - optimum) / optimum; "before polish" is what the algorithm found alone, "finished" is what the app returns.
+
+**A. The app's problem (several vans, capacities)**
+
+| stops | method | optimum found | mean gap before polish | mean gap finished | median | worst |
+|---|---|---|---|---|---|---|
+| 10 | QPSO (app default) | 22 / 30 | 6.14% | 1.48% | 0.00% | 17.6% |
+| 10 | classical PSO | 17 / 30 | 8.42% | 2.71% | 0.00% | 43.5% |
+| 10 | genetic algorithm | 19 / 30 | 5.57% | 1.37% | 0.00% | 17.6% |
+| 10 | QPSO, no warm start | 19 / 30 | 4.43% | 2.63% | 0.00% | 16.3% |
+| 10 | nearest neighbour | 13 / 30 | 31.31% | 3.71% | 1.14% | 17.6% |
+| 10 | route search (3 s) | 30 / 30 | - | 0.00% | 0.00% | 0.0% |
+| 12 | QPSO (app default) | 12 / 30 | 4.83% | 2.44% | 0.61% | 12.3% |
+| 12 | classical PSO | 11 / 30 | 6.23% | 2.73% | 0.89% | 12.3% |
+| 12 | genetic algorithm | 7 / 30 | 6.18% | 3.69% | 1.17% | 14.6% |
+| 12 | QPSO, no warm start | 16 / 30 | 3.44% | 1.86% | 0.00% | 9.0% |
+| 12 | nearest neighbour | 4 / 30 | 22.58% | 4.70% | 3.09% | 17.4% |
+| 12 | route search (3 s) | 30 / 30 | - | 0.00% | 0.00% | 0.0% |
+| 14 | QPSO (app default) | 7 / 30 | 9.27% | 3.62% | 1.41% | 12.7% |
+| 14 | classical PSO | 6 / 30 | 11.30% | 4.02% | 1.65% | 14.1% |
+| 14 | genetic algorithm | 6 / 30 | 9.16% | 4.66% | 2.86% | 15.1% |
+| 14 | QPSO, no warm start | 10 / 30 | 5.33% | 1.83% | 1.08% | 10.0% |
+| 14 | nearest neighbour | 5 / 30 | 33.59% | 5.55% | 3.68% | 22.0% |
+| 14 | route search (3 s) | 30 / 30 | - | 0.00% | 0.00% | 0.0% |
+
+**B. One van, a plain tour**
+
+| stops | method | optimum found | mean gap before polish | mean gap finished | median | worst |
+|---|---|---|---|---|---|---|
+| 12 | QPSO, no warm start | 17 / 30 | 4.70% | 1.86% | 0.00% | 10.7% |
+| 12 | classical PSO | 9 / 30 | 11.52% | 2.88% | 2.18% | 8.6% |
+| 12 | genetic algorithm | 17 / 30 | 8.18% | 1.75% | 0.00% | 10.8% |
+| 12 | QPSO, warm start | 20 / 30 | 1.34% | 1.02% | 0.00% | 5.8% |
+| 12 | route search (3 s) | 30 / 30 | - | 0.00% | 0.00% | 0.0% |
+| 16 | QPSO, no warm start | 9 / 30 | 8.84% | 5.69% | 2.98% | 24.6% |
+| 16 | classical PSO | 7 / 30 | 27.07% | 4.22% | 2.89% | 17.9% |
+| 16 | genetic algorithm | 5 / 30 | 12.44% | 6.49% | 3.17% | 31.1% |
+| 16 | QPSO, warm start | 11 / 30 | 2.33% | 2.20% | 0.46% | 15.2% |
+| 16 | route search (3 s) | 30 / 30 | - | 0.00% | 0.00% | 0.0% |
+
+**Reading it.**
+
+- **The default pipeline (QPSO, warm start, polish) is typically within a couple of per cent, not always.** Its mean gap is 1.5%, 2.4% and 3.6%
+  at 10, 12 and 14 stops; the median is 0.0%, 0.6% and 1.4%; it finds the exact optimum on 22, 12 and 7 of 30 instances, and its worst instance is 17.6%,
+  12.3% and 12.7% above. The gap grows with size while the number of exact hits falls.
+- **The polish does most of the work.** QPSO alone is 6.1%, 4.8% and 9.3% above the optimum; the polish brings that to 1.5%, 2.4% and 3.6%. Nearest
+  neighbour plus the same polish ends 3.7%, 4.7% and 5.6% above, so the swarm adds about two points over it: better on 15 of 17 decisive instances
+  at 10 stops (p = 0.001) and 18 of 20 at 12 (p < 0.001), but only 15 of 22 at 14 (p = 0.067).
+- **The route search finds the exact optimum on all 150 instances**, in at most 3 s: several vans up to 14 stops, one van up to 16. The default QPSO is
+  worse than it on 8, 18 and 23 of the 30 instances of A (better on none; p = 0.004, < 0.001, < 0.001), and QPSO without the warm start is worse
+  on 13 and 21 of B's (better on none). On problems this
+  small the route search is effectively an exact solver. This is a result about at most 14-16 stops; it says nothing on its own about larger
+  problems, where Findings 13-15 measure it against OR-Tools and the CVRPLIB optima (1.5-2.9% above proven optimal).
+- **QPSO's edge over classical PSO on raw output reproduces, and does not survive the polish.** Before the polish QPSO beats PSO on 19 of 21 decisive
+  instances at 10 stops (p < 0.001) and 15 of 19 at 12 (p = 0.010), but 13 of 19 at 14 is not significant (p = 0.084). On one van (B, no warm start)
+  it is 23 of 26 and 28 of 30 (both p < 0.001). After the polish, one comparison in ten is significant (B, 12 stops, against PSO, p = 0.032), about what chance
+  gives. Against the genetic algorithm nothing is significant on A before or after the polish (smallest p = 0.059); on B it wins before the polish at
+  12 stops (19 of 27, p = 0.026) and not at 16 (p = 0.10). The pattern is that of Findings 7 and 10.
+- **The warm start is not a clear help on small multi-van problems.** Without it QPSO's mean gap after the polish was lower at 12 and 14 stops
+  (1.9% against 2.4%; 1.8% against 3.6%) and higher at 10 (2.6% against 1.5%); none of the three paired differences is significant (p = 0.21 for warm
+  better at 10, 0.25 and 0.34 for warm worse at 12 and 14). For a single tour it does help at 16 stops (18 better, 5 worse, p = 0.005; 2.2% against
+  5.7%) and not significantly at 12. The warm start matters at scale (Finding 10); the app keeps it on, since here it is neither clearly better nor worse.
+
+**What this supports, and what it does not.**
+
+- Supported: where the optimum can be computed, the app's default pipeline is typically 1.5-3.6% above it, and the route search option matches it on
+  every instance; the raw advantage of QPSO over classical PSO reproduces.
+- Not supported: that the default is near-optimal on every instance (12-18% in the worst cases, and worse as size grows), that QPSO beats the genetic
+  algorithm or PSO after the polish, or anything about sizes above 14 stops (several vans) and 16 (one van), where there is no exact reference here.
+- Caveats: synthetic maps with random congestion, not real streets; 30 instances per size and one algorithm seed each; the objective includes the soft
+  capacity penalty, and the fleet is sized for 85% utilisation, so a van may stay empty; Finding 1's 2.4% and its "avg optimality
+  gap" table are superseded by the numbers above.
+
+Reproduce (from `backend/`; the CSV is in `results/exact_gap/`):
+
+```
+python scripts/exact_gap_experiment.py --csv results/exact_gap/gaps.csv
+python scripts/exact_gap_experiment.py --from-csv results/exact_gap/gaps.csv
+python -m pytest tests/test_exact_cvrp.py
+```
+
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)
 
 Swept `beta_start`, `beta_end`, particle count, and iteration count for QPSO
@@ -1241,6 +1346,9 @@ a disjoint set of seeds (`scripts/tune_qpso.py`):
 
 A real but modest edge — and on these small instances, 2-opt polish ties out
 most of the difference before it even shows up (see Finding 2).
+
+**Superseded by Finding 20.** These gaps were measured with the 2-opt polish that had the bug of Finding 8; Finding 20 re-measures the gap to the exact
+optimum with the current code, on the app's own problem, and should be quoted instead.
 
 ## Finding 2 — the win only shows up at a longer iteration budget
 
