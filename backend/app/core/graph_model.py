@@ -131,6 +131,25 @@ class TrafficGraph:
         arc_cost = lambda u, v, edge: weights.arc_cost(edge)  # noqa: E731
         return {n: nx.single_source_dijkstra_path_length(self._g, n, weight=arc_cost) for n in nodes}
 
+    def all_pairs_path_minutes(self, nodes: Iterable, weights) -> dict[object, dict[object, float]]:
+        """Real driving minutes (congestion included) along the cheapest path between every pair of `nodes`, the path
+        being the one `all_pairs_shortest_cost(nodes, weights)` prices. Needed when a clock has to run in minutes while
+        the cost blends in distance or congestion (time windows, core/time_windows.py)."""
+        nodes = list(nodes)
+        wanted = set(nodes)
+        arc_cost = lambda u, v, edge: weights.arc_cost(edge)  # noqa: E731
+        g = self._g
+        result: dict[object, dict[object, float]] = {}
+        for source in nodes:
+            _, paths = nx.single_source_dijkstra(g, source, weight=arc_cost)
+            row = {}
+            for target in wanted:
+                path = paths.get(target)
+                if path is not None:
+                    row[target] = sum(g[a][b]["base_travel_time_min"] * g[a][b]["congestion_factor"] for a, b in zip(path, path[1:]))
+            result[source] = row
+        return result
+
     # ---- serialization (Day 2: API request/response payloads) --------------
 
     def to_dict(self) -> dict:

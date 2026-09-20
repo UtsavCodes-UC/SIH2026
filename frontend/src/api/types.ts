@@ -79,6 +79,12 @@ export interface CostWeights {
   congestion: number;
 }
 
+/** A stop may be served between `earliest` and `latest`, in minutes after the vans leave the depot. */
+export interface TimeWindow {
+  earliest: number;
+  latest: number;
+}
+
 export interface ProblemSpec {
   graph_id: string;
   depot?: number | null;
@@ -88,6 +94,9 @@ export interface ProblemSpec {
   n_vehicles?: number | null;
   vehicle_capacity?: number;
   cost_weights?: CostWeights;
+  time_windows?: Record<string, TimeWindow> | null;
+  random_windows?: boolean; // give every stop without a window a demo window
+  service_time_min?: number;
   seed?: number | null;
 }
 
@@ -117,6 +126,20 @@ export interface RouteOut {
   time_min: number;
   distance_km: number;
   delay_min: number; // of time_min, the minutes lost to congestion compared with free flow
+  late_min: number; // time windows only: minutes this van arrived after windows closed
+  wait_min: number; // minutes it waited for windows to open
+  end_min: number | null; // back at the depot, waiting and service included
+  schedule: StopTiming[] | null;
+}
+
+export interface StopTiming {
+  stop: number;
+  arrival_min: number;
+  start_min: number; // when service begins: the arrival, or the window's opening if the van arrived early
+  wait_min: number;
+  late_min: number;
+  earliest: number | null;
+  latest: number | null;
 }
 
 export interface ResolvedProblem {
@@ -126,6 +149,9 @@ export interface ResolvedProblem {
   n_vehicles: number;
   vehicle_capacity: number;
   cost_weights: CostWeights;
+  time_windows: Record<string, TimeWindow> | null;
+  service_time_min: number;
+  time_window_penalty: number;
 }
 
 export interface OptimizeResponse {
@@ -136,6 +162,9 @@ export interface OptimizeResponse {
   total_time_min: number; // real minutes driven, whatever the weights
   total_distance_km: number;
   total_delay_min: number; // of total_time_min, the minutes lost to congestion
+  total_late_min: number; // time windows only
+  total_wait_min: number;
+  late_stops: number;
   capacity_violation: number;
   feasible: boolean;
   raw_cost: number;
@@ -154,6 +183,7 @@ export interface BenchmarkAlgorithm {
   raw_cost: number;
   time_min: number; // the raw result's travel time alone
   capacity_violation: number; // its total overload (0 = within capacity)
+  lateness_min: number; // its total lateness against the time windows
   polished_cost: number | null;
   raw_gap_pct: number | null;
   polished_gap_pct: number | null;

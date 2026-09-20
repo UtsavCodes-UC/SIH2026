@@ -210,6 +210,27 @@ export default function Sidebar(props: Props) {
           <label>Capacity{numberInput(params.capacity, (n) => onParams({ capacity: n }), 10, 1000, 10)}</label>
         </div>
         <p className="hint">Demands are random (5–25 per stop). Leave vehicles empty to size the fleet for ~85% utilization.</p>
+        <label
+          className="check"
+          title="Give every stop a time window: the earliest and latest minute a van may serve it. Vans leave the depot at minute 0."
+        >
+          <input
+            type="checkbox"
+            checked={params.timeWindows}
+            onChange={(e) => onParams({ timeWindows: e.target.checked, ...(e.target.checked && params.algorithm === "route_search" ? { algorithm: "qpso" as Algorithm } : {}) })}
+          />
+          Time windows (demo)
+        </label>
+        {params.timeWindows && (
+          <>
+            <label>Service time per stop (min){numberInput(params.serviceTime, (n) => onParams({ serviceTime: n }), 0, 60, 1)}</label>
+            <p className="hint">
+              Each stop gets a random window 30–60 minutes wide, opening up to 80 minutes after the quickest a van could get there. A van that arrives
+              early waits; one that arrives late is charged 10 per minute. Route search cannot handle windows yet, and the polish is only kept when it does
+              not make the plan later.
+            </p>
+          </>
+        )}
       </section>
 
       <section>
@@ -252,8 +273,9 @@ export default function Sidebar(props: Props) {
           Algorithm
           <select value={params.algorithm} onChange={(e) => onParams({ algorithm: e.target.value as Algorithm })}>
             {ALGORITHMS.map((a) => (
-              <option key={a} value={a}>
+              <option key={a} value={a} disabled={a === "route_search" && params.timeWindows}>
                 {ALGORITHM_LABELS[a]}
+                {a === "route_search" && params.timeWindows ? " (no time windows yet)" : ""}
               </option>
             ))}
           </select>

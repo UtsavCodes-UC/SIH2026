@@ -11,6 +11,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
 
   const { algorithms } = benchmark;
   const timeOnly = isTimeOnly(benchmark.problem.cost_weights);
+  const hasWindows = benchmark.problem.time_windows !== null;
   // The route search has no separate polish: its raw cost is its whole result. So when it is in the table the fair
   // comparison is each row's final cost (after the polish, where there is one), and that is what gets highlighted.
   const hasSearch = algorithms.some((a) => a.name === "route_search");
@@ -43,6 +44,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
                   {timeOnly ? "Travel (min)" : "Route cost"}
                 </th>
                 <th className="num" title="total capacity overload of the raw result">Overload</th>
+                {hasWindows && <th className="num" title="minutes the raw result arrives after stops' time windows closed, in total">Late (min)</th>}
                 {hasGaps && <th className="num">Gap to optimum</th>}
                 <th className="num" title="the same result after the polish: 2-opt inside each route, then moving stops between vans">+ Polish cost</th>
                 {hasGaps && <th className="num">Gap</th>}
@@ -59,6 +61,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
                   <td className="num">{fmt(a.raw_cost)}</td>
                   <td className="num">{fmt(a.time_min)}</td>
                   <td className={a.capacity_violation > 0 ? "num warn" : "num"}>{a.capacity_violation > 0 ? fmt(a.capacity_violation, 0) : "—"}</td>
+                  {hasWindows && <td className={a.lateness_min > 0 ? "num warn" : "num"}>{a.lateness_min > 0 ? fmt(a.lateness_min) : "—"}</td>}
                   {hasGaps && <td className="num">{a.raw_gap_pct === null ? "—" : `${fmt(a.raw_gap_pct)}%`}</td>}
                   <td className="num">{a.polished_cost === null ? "—" : fmt(a.polished_cost)}</td>
                   {hasGaps && <td className="num">{a.polished_gap_pct === null ? "—" : `${fmt(a.polished_gap_pct)}%`}</td>}
@@ -70,6 +73,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
           <p className="hint">
             {benchmark.n_stops} stops, {benchmark.problem.n_vehicles} vehicle{benchmark.problem.n_vehicles === 1 ? "" : "s"}.
             {!timeOnly && ` Costs are the weighted blend (${describeWeights(benchmark.problem.cost_weights)}), not minutes.`}
+            {hasWindows && ` Time windows are on: costs include ${benchmark.problem.time_window_penalty} per minute of lateness, and the exact solver cannot handle windows.`}
             {benchmark.exact_cost === null ? " No exact optimum is computed for multi-vehicle or larger problems." : ` Exact optimum: ${fmt(benchmark.exact_cost)}.`} Lower is better. The
             raw column is the like-for-like algorithm comparison; the polish helps every method and narrows the differences.
             {benchmark.warm_start

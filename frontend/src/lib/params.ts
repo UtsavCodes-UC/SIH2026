@@ -13,6 +13,8 @@ export interface SolverParams {
   polish: boolean;
   warmStart: boolean;
   timeLimit: number; // seconds; route search only
+  timeWindows: boolean; // demo time windows on every stop
+  serviceTime: number; // minutes at each stop (moves the clock the windows run on)
   seed: number;
 }
 
@@ -27,6 +29,8 @@ export const DEFAULT_PARAMS: SolverParams = {
   polish: true,
   warmStart: true,
   timeLimit: 10,
+  timeWindows: false,
+  serviceTime: 5,
   seed: 1,
 };
 

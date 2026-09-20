@@ -59,7 +59,11 @@ cd backend && python scripts/warm_city_cache.py
    without picking searches for exactly what you typed. A place you loaded once is remembered and
    suggested again later, even without the internet.
 2. **Delivery problem** — draw random stops, or click the map ("set depot" / "toggle stops");
-   set the fleet size (blank = auto) and vehicle capacity.
+   set the fleet size (blank = auto) and vehicle capacity. Tick *Time windows (demo)* to give every stop a
+   window (the earliest and latest minute a van may serve it, counted from when the vans leave the depot) and a
+   service time: vans that arrive early wait, late arrivals are charged per minute, and the results show each
+   stop's arrival against its window. Windows work with QPSO, PSO, GA and nearest neighbour; the route search
+   cannot handle them yet.
 3. **Solver** — first choose *what to minimize*: travel time (the default), distance, congestion delay (the
    minutes lost to jams compared with free flow), or a blend, with the presets *Fastest / Shortest / Avoid jams /
    Balanced* or the three sliders; results always show the real minutes, kilometres and delay, and *Weighted cost*
@@ -143,6 +147,12 @@ Both solve endpoints take `cost_weights` (`{"time": 1, "distance": 0, "congestio
 not all zero, only the ratios matter). `POST /api/optimize` returns `total_time_min`, `total_distance_km` and
 `total_delay_min` in real units, and `cost` as the weighted cost that was minimized.
 
+Soft time windows: `time_windows` (`{"<stop id>": {"earliest": 30, "latest": 60}}`, minutes after the vans leave the
+depot), or `random_windows: true` for demo windows drawn from `seed`, plus `service_time_min` and `time_window_penalty`
+(cost per minute late, default 10). The response gives each route's `schedule` (arrival, waiting and lateness per
+stop) and `total_late_min`, `total_wait_min`, `late_stops`; the resolved windows are echoed back so a plan can be
+re-solved. `route_search` and the exact baseline do not support windows (a 422 and a skipped row respectively).
+
 Anything left out of a problem (depot, stops, demands, fleet size) is filled in from `seed` and
 echoed back in the response, so the same problem can be re-solved after the traffic changes.
 
@@ -154,7 +164,7 @@ backend/
   app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions, CVRPLIB benchmark adapter
   app/services/    graph store, problem builder, solver dispatch, map/route views, live traffic, snapshots
   app/api/         FastAPI routers          app/schemas/   request/response models
-  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, cost_weights_tradeoff.py, ...), check_tomtom.py, warm_city_cache.py
+  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, cost_weights_tradeoff.py, time_windows_experiment.py, ...), check_tomtom.py, warm_city_cache.py
   tests/           pytest suite (run from backend/: python -m pytest tests/)
   results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
 frontend/          React + TypeScript + Leaflet + Recharts map UI

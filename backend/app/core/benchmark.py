@@ -168,7 +168,7 @@ def run_benchmark(
     ]
 
     exact_cost = None
-    if config.include_exact and n_stops <= MAX_STOPS_FOR_EXACT and request.n_vehicles == 1:
+    if config.include_exact and n_stops <= MAX_STOPS_FOR_EXACT and request.n_vehicles == 1 and not request.time_windows:
         exact_result = held_karp(graph, request)
         exact_cost = exact_result.best_cost
         runs.append(("held_karp_exact", exact_result))

@@ -10,9 +10,11 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
 
   const { problem, routes } = result;
   const timeOnly = isTimeOnly(problem.cost_weights); // the default objective: minutes driven and nothing else
+  const hasWindows = problem.time_windows !== null;
   const gain = result.polished && result.raw_cost > 0 ? (1 - result.cost / result.raw_cost) * 100 : null;
   // Vehicles drive in parallel, so the job is done when the slowest one is home.
-  const finishMin = Math.max(...routes.map((r) => r.time_min));
+  const finishOf = (r: (typeof routes)[number]) => (hasWindows ? r.end_min ?? r.time_min : r.time_min);
+  const finishMin = Math.max(...routes.map(finishOf));
 
   return (
     <div className="results">
@@ -31,7 +33,7 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
         <div className="kpi" title="The vans drive at the same time, so the job ends when the longest route is finished">
           <span>Job finishes in</span>
           <strong>{fmt(finishMin)} min</strong>
-          <small>longest van · driving only</small>
+          <small>{hasWindows ? "longest van · with waiting and service" : "longest van · driving only"}</small>
         </div>
         <div className="kpi">
           <span>Total distance</span>
@@ -42,6 +44,15 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
           <strong>{fmt(result.total_delay_min)} min</strong>
           <small>{fmt(result.total_time_min > 0 ? (100 * result.total_delay_min) / result.total_time_min : 0, 0)}% of driving time</small>
         </div>
+        {hasWindows && (
+          <div className="kpi" title="Stops served after their time window closed, and how many minutes late in total. Vans that arrive early wait for the window to open.">
+            <span>Time windows</span>
+            <strong className={result.late_stops === 0 ? "ok" : "warn"}>
+              {result.late_stops === 0 ? "all on time" : `${result.late_stops} late · ${fmt(result.total_late_min)} min`}
+            </strong>
+            <small>{fmt(result.total_wait_min)} min waiting</small>
+          </div>
+        )}
         {!timeOnly && (
           <div className="kpi" title="The blend of minutes, kilometres and congestion delay that was minimized, plus any overload penalty">
             <span>Weighted cost</span>
@@ -88,6 +99,7 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
                 <th className="num">Time (min)</th>
                 <th className="num">Distance (km)</th>
                 <th className="num" title="minutes lost to congestion">Delay (min)</th>
+                {hasWindows && <th className="num" title="minutes this van arrives after stops' windows closed">Late (min)</th>}
               </tr>
             </thead>
             <tbody>
@@ -101,15 +113,53 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
                   <td className={r.load > problem.vehicle_capacity ? "num warn" : "num"}>
                     {fmt(r.load, 0)} / {fmt(problem.vehicle_capacity, 0)}
                   </td>
-                  <td className={r.time_min === finishMin && routes.length > 1 ? "num longest" : "num"} title={r.time_min === finishMin && routes.length > 1 ? "the longest route: sets when the job finishes" : undefined}>
+                  <td className={finishOf(r) === finishMin && routes.length > 1 ? "num longest" : "num"} title={finishOf(r) === finishMin && routes.length > 1 ? "the longest route: sets when the job finishes" : undefined}>
                     {fmt(r.time_min)}
                   </td>
                   <td className="num">{fmt(r.distance_km)}</td>
                   <td className="num">{fmt(r.delay_min)}</td>
+                  {hasWindows && <td className={r.late_min > 0 ? "num warn" : "num"}>{fmt(r.late_min)}</td>}
                 </tr>
               ))}
             </tbody>
           </table>
+          {hasWindows && (
+            <details className="schedule">
+              <summary>Arrival at each stop, against its window</summary>
+              {routes.map((r) => (
+                <table key={r.vehicle} className="table">
+                  <thead>
+                    <tr>
+                      <th>
+                        <i className="swatch" style={{ background: vehicleColor(r.vehicle - 1) }} />
+                        Van {r.vehicle}
+                      </th>
+                      <th className="num">Arrives</th>
+                      <th className="num">Window</th>
+                      <th className="num">Waits</th>
+                      <th className="num">Late</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(r.schedule ?? []).map((t, i) => (
+                      <tr key={t.stop}>
+                        <td>
+                          {i + 1} · node {t.stop}
+                        </td>
+                        <td className="num">{fmt(t.arrival_min)}</td>
+                        <td className="num">
+                          {t.earliest === null || t.latest === null ? "—" : `${fmt(t.earliest, 0)}–${fmt(t.latest, 0)}`}
+                        </td>
+                        <td className="num">{t.wait_min > 0 ? fmt(t.wait_min) : "—"}</td>
+                        <td className={t.late_min > 0 ? "num warn" : "num"}>{t.late_min > 0 ? fmt(t.late_min) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ))}
+              <p className="hint">Minutes after the vans leave the depot. A van that arrives before a window opens waits; the service time at each stop is added before it drives on.</p>
+            </details>
+          )}
           {routes.length > 1 && (
             <p className="hint">
               The vans drive at the same time, so the job ends when the longest route (<strong>bold</strong>) is finished. Loading and unloading time is not counted.
@@ -125,7 +175,8 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
             <p className="empty">{ALGORITHM_LABELS[result.algorithm]} builds its answer in one pass, so there is no convergence curve.</p>
           )}
           <p className="hint">
-            {timeOnly ? "Cost = travel time in minutes" : `Cost = the weighted blend (${describeWeights(problem.cost_weights)})`} plus a heavy penalty for any capacity overload.{" "}
+            {timeOnly ? "Cost = travel time in minutes" : `Cost = the weighted blend (${describeWeights(problem.cost_weights)})`} plus a heavy penalty for any capacity overload
+            {hasWindows ? ` and ${problem.time_window_penalty} per minute a van arrives after a window closes` : ""}.{" "}
             {result.algorithm === "route_search"
               ? "The curve starts at the nearest-neighbour plan, drops when the local search runs, then falls as the iterated search finds better plans. There is no separate polish."
               : `The curve is the algorithm's own result, before the polish${result.warm_start ? "; it starts from a nearest-neighbour route, so it begins low" : ""}.`}

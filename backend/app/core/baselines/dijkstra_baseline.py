@@ -62,7 +62,7 @@ def nearest_neighbor(graph: TrafficGraph, request: RouteRequest) -> Optimization
     order = nearest_neighbor_order(problem)
 
     evaluation = problem.evaluate(order)
-    cost = evaluation.total_time_min + 1000.0 * evaluation.capacity_violation
+    cost = problem.penalized_cost(evaluation, 1000.0)
     runtime_sec = time.perf_counter() - start
 
     return OptimizationResult(

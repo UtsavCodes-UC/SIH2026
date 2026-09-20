@@ -6,7 +6,7 @@ from app.core.cost_model import CostWeights, path_metrics
 from app.core.graph_model import TrafficGraph
 from app.core.vrp_formulation import RoutingProblem
 from app.schemas.graph import GraphSummary, GraphView
-from app.schemas.solve import CostWeightsSpec, ResolvedProblem, RouteOut
+from app.schemas.solve import CostWeightsSpec, ResolvedProblem, RouteOut, StopTimingOut, TimeWindowSpec
 from app.services.graph_store import StoredGraph
 
 
@@ -75,8 +75,20 @@ def route_outputs(stored: StoredGraph, problem: RoutingProblem, routes: list[lis
             time_min += metrics.time_min
             distance += metrics.distance_km
             delay += metrics.delay_min
+        timing = {}
+        if problem.has_time_windows and len(route) > 2:
+            plan = problem.schedule(route)
+            timing = dict(
+                late_min=plan.late_min, wait_min=plan.wait_min, end_min=plan.end_min,
+                schedule=[
+                    StopTimingOut(stop=t.stop, arrival_min=t.arrival_min, start_min=t.start_min, wait_min=t.wait_min,
+                                  late_min=t.late_min, earliest=t.earliest, latest=t.latest)
+                    for t in plan.stops
+                ],
+            )
         outputs.append(
-            RouteOut(vehicle=vehicle, nodes=list(route), path=polyline, load=load, time_min=time_min, distance_km=distance, delay_min=delay)
+            RouteOut(vehicle=vehicle, nodes=list(route), path=polyline, load=load, time_min=time_min, distance_km=distance,
+                     delay_min=delay, **timing)
         )
     return outputs
 
@@ -94,6 +106,16 @@ def problem_warnings(problem: RoutingProblem) -> list[str]:
             "overload are unavoidable, so every cost includes a constant penalty and comparisons between "
             "algorithms are dominated by it. Add vehicles or raise the capacity."
         )
+    if problem.has_time_windows:
+        depot = request.depot
+        closed_before_reachable = [
+            stop for stop, window in request.time_windows.items() if problem.minutes[depot][stop] > window.latest + 1e-9
+        ]
+        if closed_before_reachable:
+            warnings.append(
+                f"{len(closed_before_reachable)} stop(s) have a window that closes before a van driving straight from the depot "
+                "could arrive, so they will be late whatever the plan."
+            )
     return warnings
 
 
@@ -108,4 +130,7 @@ def resolved_problem(problem: RoutingProblem) -> ResolvedProblem:
         cost_weights=CostWeightsSpec(
             time=request.cost_weights.time, distance=request.cost_weights.distance, congestion=request.cost_weights.congestion
         ) if request.cost_weights is not None else CostWeightsSpec(),
+        time_windows={s: TimeWindowSpec(earliest=w.earliest, latest=w.latest) for s, w in request.time_windows.items()} if request.time_windows else None,
+        service_time_min=request.service_time_min,
+        time_window_penalty=request.time_window_penalty,
     )

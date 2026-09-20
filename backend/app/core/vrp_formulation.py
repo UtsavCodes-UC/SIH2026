@@ -39,8 +39,10 @@ Constraints:
     - vehicle capacity: load(route) <= Q   -> soft constraint (penalty term); with a
       single vehicle the load is the same for every ordering, so the penalty is a constant
 
-Not modeled yet: time windows [earliest_i, latest_i] per stop -- would add a
-penalty term from cumulative arrival times computed alongside total_time.
+Soft time windows [earliest_i, latest_i] per stop (core/time_windows.py) add a lateness term,
+    + time_window_penalty * (total minutes a van arrives after a window closes),
+computed from arrival times along each route; a van that arrives early waits. Windows are optional
+(`RouteRequest.time_windows`) and change nothing when absent.
 
 Route representation used everywhere downstream: a FLAT, depot-delimited list,
 e.g. [0, a, b, 0, c, d, 0] for two vehicles. For one vehicle it is exactly the
@@ -55,6 +57,7 @@ from typing import Sequence
 
 from app.core.cost_model import CostWeights
 from app.core.graph_model import TrafficGraph
+from app.core.time_windows import TimeWindow, schedule_route
 
 
 class UnreachableStopError(ValueError):
@@ -70,6 +73,9 @@ class RouteRequest:
     n_vehicles: int = 1
     decoder: str = "greedy"  # how a visiting order is cut into vehicle routes: "greedy" or "optimal" (see above)
     cost_weights: CostWeights | None = None  # what a leg costs (core/cost_model.py); None = plain travel time, as always
+    time_windows: dict | None = None  # stop -> TimeWindow, minutes after the vans leave the depot (core/time_windows.py)
+    service_time_min: float = 0.0  # minutes spent at every stop; only matters for the clock that time windows run on
+    time_window_penalty: float = 10.0  # cost units per minute a van arrives after a window closes
 
 
 @dataclass
@@ -78,6 +84,9 @@ class RouteEvaluation:
     total_time_min: float
     feasible: bool
     capacity_violation: float = 0.0
+    lateness_min: float = 0.0  # total minutes vans arrive after a stop's window closed (0 without time windows)
+    waiting_min: float = 0.0  # total minutes vans waited for a window to open
+    late_stops: int = 0
 
     @property
     def route(self) -> list:
@@ -119,6 +128,12 @@ class RoutingProblem:
             raise ValueError("a multi-vehicle request needs both `demands` and `vehicle_capacity`")
         if request.decoder not in ("greedy", "optimal"):
             raise ValueError("decoder must be 'greedy' or 'optimal'")
+        if request.service_time_min < 0 or request.time_window_penalty < 0:
+            raise ValueError("service_time_min and time_window_penalty must be non-negative")
+        if request.time_windows:
+            unknown = [stop for stop in request.time_windows if stop not in set(request.stops)]
+            if unknown:
+                raise ValueError(f"time windows given for nodes that are not stops: {unknown[:5]}")
 
         self.graph = graph
         self.request = request
@@ -128,9 +143,14 @@ class RoutingProblem:
         else:  # the "time" of a leg is then its blended cost: minutes, kilometres and congestion delay, weighted
             self._leg_time = graph.all_pairs_shortest_cost(nodes, request.cost_weights)
         self._check_reachable(nodes)
-        # The optimal split needs capacities to cut on, and every stop must fit a vehicle on its own.
+        self._nodes = nodes
+        self._windows = dict(request.time_windows) if request.time_windows else None
+        self._minutes = None  # real driving minutes between nodes: built on first use unless it is the leg cost itself
+        # The optimal split needs capacities to cut on, and every stop must fit a vehicle on its own. It also assumes a
+        # route's cost does not depend on when it starts, which time windows break, so windows fall back to the greedy cut.
         self._optimal = (
             request.decoder == "optimal"
+            and self._windows is None
             and request.n_vehicles > 1
             and request.demands is not None
             and request.vehicle_capacity is not None
@@ -148,6 +168,35 @@ class RoutingProblem:
 
     def leg_time(self, u, v) -> float:
         return self._leg_time[u][v]
+
+    @property
+    def has_time_windows(self) -> bool:
+        return self._windows is not None
+
+    @property
+    def minutes(self) -> dict:
+        """Real driving minutes between the depot and the stops. The same table as `legs` unless the cost weights blend in
+        distance or congestion, in which case it is the minutes along the roads those weights choose."""
+        if self._minutes is None:
+            weights = self.request.cost_weights
+            if weights is None or weights.is_default:
+                self._minutes = self._leg_time
+            else:
+                self._minutes = self.graph.all_pairs_path_minutes(self._nodes, weights)
+        return self._minutes
+
+    def schedule(self, route: Sequence):
+        """Arrival, waiting and lateness at each stop of a depot-delimited route (core/time_windows.py)."""
+        return schedule_route(route, self.minutes, self._windows, self.request.service_time_min)
+
+    def penalized_cost(self, evaluation: "RouteEvaluation", penalty_weight: float = 1000.0) -> float:
+        """The objective of an evaluated plan: driving cost + capacity penalty + lateness penalty. The one place this sum
+        is written down, so every solver and the polish score a plan the same way."""
+        return (
+            evaluation.total_time_min
+            + penalty_weight * evaluation.capacity_violation
+            + self.request.time_window_penalty * evaluation.lateness_min
+        )
 
     @property
     def legs(self) -> dict:
@@ -305,15 +354,60 @@ class RoutingProblem:
         capacity = self.request.vehicle_capacity
         if capacity is not None and self.request.demands is not None:
             violation = sum(max(0.0, load - capacity) for load in self.route_loads(routes))
+        late = wait = 0.0
+        late_stops = 0
+        if self._windows is not None:
+            for route in routes:
+                timing = self.schedule(route)
+                late += timing.late_min
+                wait += timing.wait_min
+                late_stops += sum(1 for stop in timing.stops if stop.late_min > 0)
         return RouteEvaluation(
             routes=routes,
             total_time_min=total_time,
             feasible=violation == 0.0,
             capacity_violation=violation,
+            lateness_min=late,
+            waiting_min=wait,
+            late_stops=late_stops,
         )
 
     def evaluate(self, stop_order: Sequence) -> RouteEvaluation:
         return self.evaluate_routes(self.split(stop_order))
+
+    def _cost_with_windows(self, stop_order: Sequence, penalty_weight: float) -> float:
+        """`cost` when stops have time windows: the same greedy split and driving cost, plus the lateness penalty, with a
+        clock that restarts at 0 for each van. Equal to `penalized_cost(evaluate(stop_order))`, tested."""
+        leg, minutes, windows = self._leg_time, self.minutes, self._windows
+        depot, service = self.request.depot, self.request.service_time_min
+        demands, capacity = self.request.demands, self.request.vehicle_capacity
+        track_load = demands is not None and capacity is not None
+        max_routes = self.request.n_vehicles
+
+        total_time = load = violation = late = clock = 0.0
+        last, routes_closed = depot, 0
+        for stop in stop_order:
+            if track_load:
+                demand = demands.get(stop, 0)
+                if load > 0 and load + demand > capacity and routes_closed < max_routes - 1:
+                    total_time += leg[last][depot]
+                    violation += max(0.0, load - capacity)
+                    last, load, routes_closed, clock = depot, 0.0, routes_closed + 1, 0.0
+                load += demand
+            total_time += leg[last][stop]
+            clock += minutes[last][stop]
+            window = windows.get(stop)
+            if window is not None:
+                if clock < window.earliest:
+                    clock = window.earliest  # waits for the window to open
+                elif clock > window.latest:
+                    late += clock - window.latest
+            clock += service
+            last = stop
+        total_time += leg[last][depot]
+        if track_load:
+            violation += max(0.0, load - capacity)
+        return total_time + penalty_weight * violation + self.request.time_window_penalty * late
 
     def cost(self, stop_order: Sequence, penalty_weight: float = 1000.0) -> float:
         """Fitness used by the metaheuristics: objective + penalty for constraint
@@ -327,6 +421,8 @@ class RoutingProblem:
             found = self._optimal_split(stop_order)
             if found is not None:
                 return found[0]  # capacity-respecting by construction: no penalty term
+        if self._windows is not None:
+            return self._cost_with_windows(stop_order, penalty_weight)
         leg, depot = self._leg_time, self.request.depot
         demands, capacity = self.request.demands, self.request.vehicle_capacity
         track_load = demands is not None and capacity is not None

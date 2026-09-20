@@ -100,7 +100,11 @@ def polish_result(
     By default this runs 2-opt on each vehicle's route on its own, so the stops-per-vehicle assignment
     (and thus every load) is unchanged. With `inter_route=True` it runs `improve_routes` instead, which
     also moves stops between vehicles. Runtime of the polish is added to the reported runtime; the
-    polished cost is appended to convergence_history so it's visible as one extra point on a chart."""
+    polished cost is appended to convergence_history so it's visible as one extra point on a chart.
+
+    Neither 2-opt nor `improve_routes` knows about time windows: they shorten driving and can move a stop later or
+    earlier than its window allows. So when the problem has windows the polish is kept only if the polished plan has a
+    lower objective (driving + lateness penalty) than the plan it started from; otherwise `result` comes back as it was."""
     start = time.perf_counter()
 
     depot = problem.request.depot
@@ -111,8 +115,10 @@ def polish_result(
         polished_routes = [[depot, *two_opt(route[1:-1], problem.leg_time, depot), depot] for route in routes]
 
     evaluation = problem.evaluate_routes(polished_routes)
-    cost = evaluation.total_time_min + penalty_weight * evaluation.capacity_violation
+    cost = problem.penalized_cost(evaluation, penalty_weight)
     polish_runtime = time.perf_counter() - start
+    if problem.has_time_windows and cost >= result.best_cost - 1e-9:
+        return result
 
     return OptimizationResult(
         best_route=evaluation.route,

@@ -10,7 +10,7 @@ from app.core.route_search import solve_with_search
 from app.core.vrp_formulation import RoutingProblem, split_at_depot
 from app.schemas.solve import BenchmarkAlgorithmOut, BenchmarkRequest, BenchmarkResponse
 from app.services.graph_store import GraphStore, get_store
-from app.services.problem_builder import resolve_problem
+from app.services.problem_builder import InvalidProblemError, resolve_problem
 from app.services.views import problem_warnings, resolved_problem
 
 router = APIRouter(tags=["benchmark"])
@@ -22,6 +22,8 @@ def benchmark(req: BenchmarkRequest, store: GraphStore = Depends(get_store)) -> 
     with stored.lock:
         request = resolve_problem(stored, req)
         routing_problem = RoutingProblem(stored.graph, request)  # validates reachability first
+        if req.include_route_search and request.time_windows:
+            raise InvalidProblemError("the route search does not handle time windows yet, so it cannot be added to this benchmark")
         config = BenchmarkConfig(
             n_particles=req.n_particles,
             n_iterations=req.n_iterations,
@@ -44,6 +46,7 @@ def benchmark(req: BenchmarkRequest, store: GraphStore = Depends(get_store)) -> 
                     raw_cost=algo.raw_cost,
                     time_min=raw.total_time_min,
                     capacity_violation=raw.capacity_violation,
+                    lateness_min=raw.lateness_min,
                     polished_cost=algo.result.best_cost if algo.polished else None,
                     raw_gap_pct=algo.raw_gap_pct,
                     polished_gap_pct=algo.polished_gap_pct,

@@ -29,6 +29,8 @@ def held_karp(graph: TrafficGraph, request: RouteRequest) -> OptimizationResult:
         raise ValueError("held_karp is a single-vehicle exact solver; multi-vehicle requests have no exact baseline here")
     start = time.perf_counter()
     problem = RoutingProblem(graph, request)
+    if problem.has_time_windows:
+        raise ValueError("held_karp does not model time windows: with windows a tour's cost depends on when each stop is reached")
 
     stops = list(dict.fromkeys(request.stops))
     n = len(stops)

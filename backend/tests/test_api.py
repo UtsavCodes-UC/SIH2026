@@ -501,3 +501,119 @@ def test_benchmark_uses_the_weights_and_the_exact_optimum_follows_them():
     assert body["exact_cost"] is not None
     for algo in body["algorithms"]:
         assert algo["raw_gap_pct"] >= -1e-6  # nothing beats the exact optimum of the same blend
+
+
+# ---- time windows ----------------------------------------------------------------------------------------------------------
+
+
+def test_time_windows_are_validated():
+    view = make_graph()
+    graph_id, nodes = view["summary"]["graph_id"], [int(n[0]) for n in view["nodes"]]
+    post = lambda **body: client.post("/api/optimize", json={"graph_id": graph_id, "depot": nodes[0], "stops": nodes[1:5], **FAST, **body})  # noqa: E731
+    stop = nodes[1]
+
+    assert post(time_windows={stop: {"earliest": 30, "latest": 10}}).status_code == 422  # closes before it opens
+    assert post(time_windows={stop: {"earliest": -5, "latest": 10}}).status_code == 422
+    assert post(time_windows={nodes[9]: {"earliest": 0, "latest": 10}}).status_code == 422  # not one of the stops
+    assert post(service_time_min=-1).status_code == 422
+    assert post(time_window_penalty=5000).status_code == 422
+    assert post(time_windows={stop: {"latest": 60}}).status_code == 200  # earliest defaults to 0
+
+
+def test_demo_windows_cover_every_stop_are_reproducible_and_leave_the_problem_alone():
+    graph_id = make_graph()["summary"]["graph_id"]
+
+    plain = solve(graph_id, n_stops=10, seed=4)
+    first = solve(graph_id, n_stops=10, seed=4, random_windows=True)
+    again = solve(graph_id, n_stops=10, seed=4, random_windows=True)
+
+    assert first["problem"]["stops"] == plain["problem"]["stops"] and first["problem"]["demands"] == plain["problem"]["demands"]
+    windows = first["problem"]["time_windows"]
+    assert set(map(int, windows)) == set(first["problem"]["stops"])
+    assert all(0 <= w["earliest"] <= w["latest"] for w in windows.values())
+    assert first["problem"]["time_windows"] == again["problem"]["time_windows"]
+    assert plain["problem"]["time_windows"] is None
+
+
+def test_a_plan_reports_arrivals_waiting_and_lateness_per_stop_and_they_add_up():
+    graph_id = make_graph()["summary"]["graph_id"]
+
+    out = solve(graph_id, n_stops=12, seed=4, random_windows=True, service_time_min=3)
+
+    problem = out["problem"]
+    windows = {int(k): v for k, v in problem["time_windows"].items()}
+    assert problem["service_time_min"] == 3
+    late_count = 0
+    for route in out["routes"]:
+        stops = route["schedule"]
+        assert [t["stop"] for t in stops] == route["nodes"][1:-1]
+        clock = 0.0
+        for t in stops:
+            assert t["arrival_min"] >= clock - 1e-9  # time only moves forward along a route
+            window = windows[t["stop"]]
+            assert (t["earliest"], t["latest"]) == (window["earliest"], window["latest"])
+            assert t["start_min"] == pytest.approx(max(t["arrival_min"], window["earliest"]))
+            assert t["wait_min"] == pytest.approx(t["start_min"] - t["arrival_min"])
+            assert t["late_min"] == pytest.approx(max(0.0, t["arrival_min"] - window["latest"]))
+            clock = t["start_min"] + 3
+            late_count += t["late_min"] > 0
+        assert route["end_min"] == pytest.approx(clock + (route["end_min"] - clock))  # ends after the last service
+        assert route["end_min"] >= clock
+        assert route["late_min"] == pytest.approx(sum(t["late_min"] for t in stops))
+    assert out["total_late_min"] == pytest.approx(sum(r["late_min"] for r in out["routes"]))
+    assert out["total_wait_min"] == pytest.approx(sum(r["wait_min"] for r in out["routes"]))
+    assert out["late_stops"] == late_count
+    # the optimizer's cost is the driving cost plus the lateness penalty (10 per minute, the default)
+    assert out["feasible"] and out["cost"] == pytest.approx(out["total_time_min"] + 10.0 * out["total_late_min"])
+
+
+def test_a_plan_without_windows_has_no_schedule_and_no_lateness():
+    graph_id = make_graph()["summary"]["graph_id"]
+    out = solve(graph_id, n_stops=8)
+    assert all(r["schedule"] is None and r["end_min"] is None for r in out["routes"])
+    assert (out["total_late_min"], out["total_wait_min"], out["late_stops"]) == (0, 0, 0)
+
+
+def test_pricing_lateness_makes_the_plan_less_late():
+    graph_id = make_graph()["summary"]["graph_id"]
+    same = dict(n_stops=12, seed=4, random_windows=True, service_time_min=15, n_particles=30, n_iterations=200)  # 15 min at each stop makes the windows bind
+
+    priced = client.post("/api/optimize", json={"graph_id": graph_id, **same, "time_window_penalty": 50}).json()
+    unpriced = client.post("/api/optimize", json={"graph_id": graph_id, **same, "time_window_penalty": 0}).json()
+
+    assert priced["problem"]["time_windows"] == unpriced["problem"]["time_windows"]
+    assert priced["total_late_min"] < unpriced["total_late_min"]  # the same windows; only what lateness costs differs
+    assert priced["total_time_min"] >= unpriced["total_time_min"] - 1e-6  # and being on time is not free
+
+
+def test_a_window_that_closes_before_a_van_can_get_there_is_flagged():
+    view = make_graph()
+    graph_id, nodes = view["summary"]["graph_id"], [int(n[0]) for n in view["nodes"]]
+
+    out = solve(graph_id, depot=nodes[0], stops=nodes[1:5], time_windows={nodes[1]: {"earliest": 0, "latest": 0}})
+
+    assert any("window that closes before" in w for w in out["warnings"])
+    assert out["late_stops"] >= 1
+
+
+def test_the_route_search_is_refused_with_windows_and_everything_else_works():
+    graph_id = make_graph()["summary"]["graph_id"]
+    refused = client.post("/api/optimize", json={"graph_id": graph_id, "n_stops": 8, "random_windows": True, "algorithm": "route_search"})
+    assert refused.status_code == 422 and "time windows" in refused.json()["detail"]
+    refused = client.post("/api/benchmark", json={"graph_id": graph_id, "n_stops": 8, "random_windows": True, "include_route_search": True, **FAST})
+    assert refused.status_code == 422
+
+    for algorithm in ("qpso", "pso", "ga", "nearest_neighbor"):
+        out = solve(graph_id, n_stops=8, random_windows=True, algorithm=algorithm)
+        assert out["algorithm"] == algorithm and len(out["problem"]["time_windows"]) == 8
+
+
+def test_benchmark_with_windows_reports_lateness_and_skips_the_exact_solver():
+    graph_id = make_graph()["summary"]["graph_id"]
+
+    body = client.post("/api/benchmark", json={"graph_id": graph_id, "n_stops": 6, "n_vehicles": 1, "vehicle_capacity": 1000, "random_windows": True, **FAST}).json()
+
+    assert body["exact_cost"] is None and "held_karp_exact" not in {a["name"] for a in body["algorithms"]}
+    assert body["problem"]["time_windows"] is not None
+    for algo in body["algorithms"]:
+        assert algo["raw_cost"] == pytest.approx(algo["time_min"] + 1000.0 * algo["capacity_violation"] + 10.0 * algo["lateness_min"])

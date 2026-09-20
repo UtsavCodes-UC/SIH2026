@@ -60,6 +60,8 @@ class RouteSearch:
         if unknown:
             raise ValueError(f"unknown operators {sorted(unknown)}; choose from {ALL_OPERATORS}")
         request = problem.request
+        if problem.has_time_windows:
+            raise ValueError("the route search does not model time windows yet: its move evaluation assumes a route's cost does not depend on when it starts")
         self.problem = problem
         self.depot = request.depot
         self.stops = list(dict.fromkeys(request.stops))

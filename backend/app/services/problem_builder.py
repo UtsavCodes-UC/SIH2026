@@ -9,6 +9,7 @@ import random
 import numpy as np
 
 from app.core.cost_model import CostWeights
+from app.core.time_windows import TimeWindow, random_time_windows
 from app.core.vrp_formulation import RouteRequest
 from app.schemas.solve import ProblemSpec
 from app.services.graph_store import StoredGraph
@@ -67,6 +68,22 @@ def resolve_problem(stored: StoredGraph, spec: ProblemSpec) -> RouteRequest:
     if n_vehicles is None:
         n_vehicles = max(1, math.ceil(sum(demands.values()) / (TARGET_FLEET_UTILIZATION * spec.vehicle_capacity)))
 
+    windows = None
+    if spec.time_windows:
+        outside = [s for s in spec.time_windows if s not in set(stops)]
+        if outside:
+            raise InvalidProblemError(f"time windows given for nodes that are not stops: {outside[:5]}")
+        windows = {s: TimeWindow(w.earliest, w.latest) for s, w in spec.time_windows.items()}
+    if spec.random_windows:
+        missing = [s for s in stops if not windows or s not in windows]
+        if missing:
+            quickest = stored.graph.all_pairs_shortest_time([depot])[depot]
+            unreachable = [s for s in missing if s not in quickest]
+            if unreachable:
+                raise InvalidProblemError(f"stops that the depot cannot reach cannot be given a window: {unreachable[:5]}")
+            # its own random stream: turning windows on never changes which stops or demands a seed produces
+            windows = {**random_time_windows(missing, quickest, random.Random(f"{spec.seed}-windows")), **(windows or {})}
+
     return RouteRequest(
         depot=depot,
         stops=stops,
@@ -74,4 +91,7 @@ def resolve_problem(stored: StoredGraph, spec: ProblemSpec) -> RouteRequest:
         vehicle_capacity=spec.vehicle_capacity,
         n_vehicles=n_vehicles,
         cost_weights=CostWeights(spec.cost_weights.time, spec.cost_weights.distance, spec.cost_weights.congestion),
+        time_windows=windows,
+        service_time_min=spec.service_time_min,
+        time_window_penalty=spec.time_window_penalty,
     )

@@ -1,6 +1,6 @@
 # Benchmark results
 
-## Read this first — current headline (Findings 7-16)
+## Read this first — current headline (Findings 7-17)
 
 The problem statement's core claim is that QPSO gives "stronger global
 search, faster convergence, and a better balance between exploration and
@@ -90,6 +90,12 @@ Finding 16 covers the objective. The optimizer can now minimize a weighted blend
 delay (the default is time alone, unchanged), and the results report real minutes, kilometres and delay. Weighting
 distance alone saves about 6-7% of the kilometres at the price of 13-15% more minutes and roughly 60% more congestion delay;
 half weight on congestion cuts the delay by 6-8% for about 1% more minutes.
+
+Finding 17 adds soft time windows: a stop may be served between an earliest and a latest minute; early vans wait, late vans are
+charged per minute. QPSO, PSO and the GA plan around them (plans that ignore the windows are late at a third of the stops, plans
+that price lateness are on time, for roughly 26-36% more driving on the random demo windows), but the route search and the exact
+solver do not handle windows. The algorithms only did well once all three were given a window-aware starting solution; then QPSO
+ties with the GA and PSO. It is not better than them here.
 
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
@@ -982,6 +988,85 @@ Reproduce (from `backend/`; the CSV is in `results/cost_weights/`):
 ```
 python scripts/cost_weights_tradeoff.py --csv results/cost_weights/tradeoff.csv
 python scripts/cost_weights_tradeoff.py --from-csv results/cost_weights/tradeoff.csv
+```
+
+## Finding 17 — soft time windows: QPSO, PSO and GA arrive on time, and a window-aware starting solution is what makes them good at it
+
+**The question.** The problem statement lists time windows among the constraints. The formulation and the solvers now handle
+soft windows (MATH_FORMULATION.md, sections 2.3-2.4; `core/time_windows.py`): a stop may be served between an earliest and a
+latest minute after the vans leave the depot; a van that arrives early waits; one that arrives late still serves the stop and is
+charged `time_window_penalty` (10 by default) per minute late, on top of the driving cost and the capacity penalty. Does pricing
+lateness change the plans, and do the algorithms cope?
+
+**What supports windows.** QPSO, PSO, GA and nearest neighbour, through the same cost function. The optimal Split decoder, the exact
+Held-Karp solver and the route search assume that a route's cost does not depend on when it starts, which windows break, so the
+first steps aside (greedy cut), the second is skipped and the third is refused with a clear message. The polish (2-opt and moving
+stops between vans) does not know about windows, so with windows it is kept only if the polished plan has a lower objective.
+
+**Correctness checks** (`tests/test_time_windows.py`, 24 tests, plus 8 API tests). The schedule arithmetic is checked by hand
+(waiting, lateness, service time). The fast cost used inside the searches equals the reporting path on random plans, including
+with blended cost weights. On a 6-stop problem QPSO finds the brute-force optimum of the windowed objective, and the plan that
+ignores the windows is worse under them.
+
+**Experiment** (`scripts/time_windows_experiment.py`). The problems of Findings 15-16 (the app's synthetic road network with random
+congestion, random stops and demands, fleet for about 85% utilisation), 20 instances at each of 15 and 30 stops, with the app's demo
+windows (30-60 minutes wide, opening up to 80 minutes after the quickest a van could get there) and 5 minutes of service at each
+stop. Every algorithm solves each problem twice through the API's own `solve()`: once **pricing lateness** and once **ignoring the
+windows** (penalty 0), and each finished plan is measured against the windows.
+
+The app's default (QPSO, warm start, polish), mean over the 20 instances:
+
+| stops | plan | minutes late | stops late | driving (min) | waiting (min) |
+|---|---|---|---|---|---|
+| 15 | ignores the windows | 157.6 | 4.9 | 107.4 | 86.3 |
+| 15 | prices lateness | 0.0 | 0.0 | 135.7 | 49.6 |
+| 30 | ignores the windows | 290.2 | 11.2 | 179.7 | 187.9 |
+| 30 | prices lateness | 0.0 | 0.2 | 244.2 | 88.8 |
+
+Ignoring the windows leaves about 5 of 15 stops and 11 of 30 late, by hundreds of minutes in
+total. Pricing lateness removes it, at the price of 26% more driving at 15 stops and 36% more at 30 (and a
+lot less waiting: the plan stops arriving early at stops whose window has not opened). Every one of the 20 instances at each size is
+better on the objective with lateness priced, for every algorithm except nearest neighbour, which cannot plan around windows
+(it is better on 17 of 20 and 14 of 20, level on the rest).
+
+**What made the algorithms good at windows.** The first run started QPSO, PSO and the GA from the usual warm-start seeds, nearest
+neighbour and nearest neighbour after 2-opt, which know nothing about windows. At 30 stops QPSO's plans then had an objective
+43% higher than the genetic algorithm's (GA better on 19 of 20). Adding one window-aware seed, a nearest
+neighbour that goes next to the stop whose service could start soonest (`warm_start.window_aware_order`), to the starting
+solutions of all three changed that. Objective = driving minutes + 10 x minutes late, mean; each cell is minutes late / driving
+minutes / objective, with lateness priced:
+
+| algorithm | 15 stops: late min / driving / objective, plain seeds | with window-aware seed | 30 stops: plain seeds | with window-aware seed |
+|---|---|---|---|---|
+| QPSO (app default) | 0.0 / 136.0 / **136.0** | 0.0 / 135.7 / **135.7** | 3.5 / 296.2 / **331.1** | 0.0 / 244.2 / **244.5** |
+| classical PSO | 0.8 / 154.7 / **162.3** | 0.0 / 139.5 / **139.8** | 10.3 / 311.1 / **413.9** | 0.3 / 247.1 / **250.3** |
+| genetic algorithm | 0.2 / 136.5 / **138.1** | 0.0 / 138.3 / **138.3** | 0.1 / 231.0 / **232.1** | 0.1 / 243.6 / **244.3** |
+| nearest neighbour | 81.4 / 132.6 / **946.2** | 81.4 / 132.6 / **946.2** | 241.4 / 215.7 / **2629.8** | 241.4 / 215.7 / **2629.8** |
+
+With the seed, at 30 stops QPSO is level with the genetic algorithm (QPSO lower on 12 of 20, higher on 8; the GA's
+objective is 0.9% lower, not significant) and with classical PSO (10 wins, 2 ties, 8 losses). At 15 stops all three tie
+(QPSO against the GA 8/3/9, against PSO 10/5/5). The credit therefore belongs to the seed, domain
+knowledge about windows given to every algorithm, not to the quantum update. The seed slightly hurt the GA at 30 stops (232 to
+244) while helping the swarms, so it is a good starting point rather than a free lunch.
+
+**What this supports, and what it does not.**
+
+- Supported: windows are modelled, priced and reported (per-stop arrival, waiting and lateness in the API and the UI); QPSO, PSO and
+  GA plan around them and arrive on time; with a sensible starting solution QPSO is level with the other two.
+- Not supported: that QPSO is better than the GA or PSO under windows. It is not, on this evidence.
+- The demo windows are random and unrelated to geography, which makes them expensive to meet (26-36% more driving). Real windows
+  often follow the map (a district opens at nine), which would cost less. 10 per minute is a choice of the trade-off, not a
+  measured optimum; the penalty was not varied here.
+- Not tested: more than 30 stops, real OpenStreetMap cities, hard windows, a different service time per stop, and a route search
+  that understands windows. The plans "ignoring the windows" still start from the same seeds as the aware ones, which the search
+  discards because they cost more driving. 20 instances per size, one algorithm seed per instance.
+
+Reproduce (from `backend/`; the CSVs are in `results/time_windows/`):
+
+```
+python scripts/time_windows_experiment.py --csv results/time_windows/aware_vs_ignoring.csv
+python scripts/time_windows_experiment.py --plain-seeds --csv results/time_windows/aware_vs_ignoring_plain_seeds.csv
+python scripts/time_windows_experiment.py --from-csv results/time_windows/aware_vs_ignoring.csv
 ```
 
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)

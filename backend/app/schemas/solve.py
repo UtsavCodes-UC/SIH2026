@@ -29,6 +29,20 @@ class CostWeightsSpec(BaseModel):
         return self
 
 
+class TimeWindowSpec(BaseModel):
+    """A stop may be served between `earliest` and `latest`, in minutes after the vans leave the depot. A van that
+    arrives early waits; one that arrives late still serves the stop and the lateness is penalized (soft window)."""
+
+    earliest: float = Field(0.0, ge=0, le=100_000)
+    latest: float = Field(..., ge=0, le=100_000)
+
+    @model_validator(mode="after")
+    def _ordered(self):
+        if self.latest < self.earliest:
+            raise ValueError("a time window needs earliest <= latest")
+        return self
+
+
 class ProblemSpec(BaseModel):
     """Which routing problem to solve on a stored graph. Anything left out is filled
     in deterministically from `seed`, and the resolved values are echoed back in the
@@ -42,6 +56,10 @@ class ProblemSpec(BaseModel):
     n_vehicles: int | None = Field(None, ge=1, le=40, description="default: enough vehicles for ~85% fleet utilization")
     vehicle_capacity: float = Field(100.0, gt=0)
     cost_weights: CostWeightsSpec = Field(default_factory=CostWeightsSpec, description="what to minimize: time, distance and congestion weights")
+    time_windows: dict[int, TimeWindowSpec] | None = Field(None, description="stop id -> window; stops left out have none")
+    random_windows: bool = Field(False, description="give every stop that has no window a demo window, drawn from `seed`")
+    service_time_min: float = Field(0.0, ge=0, le=240, description="minutes spent at each stop (moves the clock the windows run on)")
+    time_window_penalty: float = Field(10.0, ge=0, le=1000, description="cost per minute a van arrives after a window closes")
     seed: int | None = 1
 
 
@@ -67,6 +85,16 @@ class BenchmarkRequest(ProblemSpec):
     time_limit_sec: float = Field(10.0, ge=1, le=60, description=TIME_LIMIT_DESCRIPTION)
 
 
+class StopTimingOut(BaseModel):
+    stop: int
+    arrival_min: float
+    start_min: float  # when service begins: the arrival, or the window's opening if the van arrived early
+    wait_min: float
+    late_min: float
+    earliest: float | None
+    latest: float | None
+
+
 class RouteOut(BaseModel):
     vehicle: int
     nodes: list[int]  # [depot, stop, ..., depot]
@@ -75,6 +103,10 @@ class RouteOut(BaseModel):
     time_min: float
     distance_km: float
     delay_min: float = 0.0  # of the time_min, the minutes lost to congestion compared with free flow
+    late_min: float = 0.0  # minutes this van arrives after windows closed (time windows only)
+    wait_min: float = 0.0  # minutes it waits for windows to open
+    end_min: float | None = None  # back at the depot, waiting and service time included (time windows only)
+    schedule: list[StopTimingOut] | None = None  # arrival at each stop against its window (time windows only)
 
 
 class ResolvedProblem(BaseModel):
@@ -84,6 +116,9 @@ class ResolvedProblem(BaseModel):
     n_vehicles: int
     vehicle_capacity: float
     cost_weights: CostWeightsSpec = CostWeightsSpec()
+    time_windows: dict[int, TimeWindowSpec] | None = None
+    service_time_min: float = 0.0
+    time_window_penalty: float = 10.0
 
 
 class OptimizeResponse(BaseModel):
@@ -94,6 +129,9 @@ class OptimizeResponse(BaseModel):
     total_time_min: float  # real minutes driven, added over all vehicles, whatever the weights were
     total_distance_km: float
     total_delay_min: float = 0.0  # of total_time_min, the minutes lost to congestion
+    total_late_min: float = 0.0  # minutes vans arrived after a window closed, over all stops (0 without time windows)
+    total_wait_min: float = 0.0  # minutes vans waited for a window to open
+    late_stops: int = 0  # stops served after their window closed
     capacity_violation: float
     feasible: bool
     raw_cost: float  # the algorithm's own result, before the polish
@@ -112,6 +150,7 @@ class BenchmarkAlgorithmOut(BaseModel):
     raw_cost: float  # travel time + overload penalty, the quantity the algorithms minimize
     time_min: float  # the raw result's travel time alone
     capacity_violation: float  # the raw result's total overload (0 = every vehicle within capacity)
+    lateness_min: float = 0.0  # the raw result's total lateness against the time windows (0 without windows)
     polished_cost: float | None
     raw_gap_pct: float | None  # vs the exact optimum, when one exists
     polished_gap_pct: float | None

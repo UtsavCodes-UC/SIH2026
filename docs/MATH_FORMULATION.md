@@ -80,6 +80,8 @@ roads: each leg is drawn along its quickest path (`views.py`).
 ```
 depot 0, stops S = {1..n}, demand q_i >= 0 for each stop
 m identical vans, capacity Q
+optional, per stop: a time window [e_i, l_i], 0 <= e_i <= l_i (minutes after the vans leave the depot)
+optional: a service time s (minutes at every stop), a lateness price P_w (default 10 per minute)
 ```
 
 In the app the demands default to a random integer in 5..25, Q to 100, and m to the smallest fleet that carries the
@@ -110,6 +112,29 @@ each added up along the roads actually driven (`path_metrics`), next to the weig
 Finding 16). Only the ratios of the weights matter. The time at which the last van gets home ("job finishes in") is shown in
 the UI but not optimized; loading and unloading time is not modelled.
 
+**Soft time windows** (`core/time_windows.py`). Every van leaves the depot at time 0. Along a route (r_1, ..., r_L), with
+tt(u,v) the REAL driving minutes from u to v (the minutes along the road that the cost weights choose, not the blended cost):
+
+```
+a_1 = tt(0, r_1)                          arrival at the first stop
+b_j = max(a_j, e_{r_j})                   service starts when the window opens: a van that arrives early waits
+a_{j+1} = b_j + s + tt(r_j, r_{j+1})      s = service time at every stop
+late_j = max(0, a_j - l_{r_j})            a van that arrives after the window closes still serves the stop, and is late
+```
+
+A stop with no window has e = 0 and l = infinity, so it is never early or late. Waiting costs nothing by itself but delays every
+later stop, which is how it reaches the objective. The return leg to the depot has no window. With windows the objective is
+
+```
+minimize   C = sum_k T(R_k)  +  P * sum_k max(0, q(R_k) - Q)  +  P_w * sum_{stops} late_j
+```
+
+The windows are soft: a plan that misses one is not infeasible, it is charged, and the UI and API report each stop's arrival,
+waiting and lateness next to the totals. Because the clock makes a route's cost depend on when it starts, three components
+that rely on the cost being a sum of independent legs do not handle windows: the linear-time optimal Split (it falls back to the
+greedy cut), Held-Karp (skipped in benchmarks, refused if asked) and the route search (refused with a message). The polish keeps
+its result only if the objective above is lower afterwards. See BENCHMARKS.md, Finding 17 for what this does to the plans.
+
 The same problem as an integer program (the standard three-index CVRP formulation; the code does *not* solve it this way, it
 searches over routes, which builds the constraints into the representation):
 
@@ -124,12 +149,16 @@ s.t.  sum_k sum_{j != i} x_ijk = 1                            every stop is left
       subtour elimination                                     no cycle avoids the depot
 ```
 
+(With windows the integer program needs the arrival times above as extra continuous variables, linked to x by big-M
+constraints; the recursion above is what the code evaluates.)
+
 **Special cases.** m = 1 is the asymmetric travelling-salesman problem with a start and end at the depot. It is solved exactly
 by **Held-Karp** dynamic programming over subsets in O(2^n n^2) time, used as ground truth up to 16 stops
 (`exact_held_karp.py`). For m > 1 no exact baseline is computed.
 
-**Not modelled:** time windows, service times, a heterogeneous fleet, several depots, stochastic demand, turn penalties.
-Congestion is frozen during one solve; a new solve is run after traffic changes.
+**Not modelled:** hard time windows (they are soft), a different service time per stop or per-van start times, a heterogeneous
+fleet, several depots, stochastic demand, turn penalties. Congestion is frozen during one solve; a new solve is run after traffic
+changes.
 
 ## 3. Representation: from a permutation to routes
 
@@ -197,7 +226,9 @@ change anything up to 50 stops. Defaults: P = 40 particles, T = 800 iterations. 
 per particle to decode) plus P evaluations of O(n).
 
 **Initialization.** Random keys, U(0,1)^n. With **warm start** (the app's default) two particles start as encodings of the
-nearest-neighbour plan and of that plan after 2-opt (`warm_start.py`); the rest stay random for diversity. From about 50
+nearest-neighbour plan and of that plan after 2-opt (`warm_start.py`); the rest stay random for diversity. With time windows
+a third seed is added: a nearest neighbour by time, which goes next to the stop whose service could start soonest (Finding 17
+shows this is what made the algorithms good at windows). From about 50
 stops a random start is beaten by plain nearest neighbour (Finding 10), so the swarm is asked to improve a good plan
 rather than find one.
 
@@ -296,7 +327,7 @@ The comparisons in BENCHMARKS.md follow one method (`benchmark.py` and the scrip
 | Quantity | Cost | Code |
 |---|---|---|
 | Leg-time table t(u,v) | one Dijkstra from each of the n + 1 nodes | `graph_model.all_pairs_shortest_time` |
-| Score one permutation (greedy split) | O(n) | `RoutingProblem.cost` |
+| Score one permutation (greedy split), with or without time windows | O(n) | `RoutingProblem.cost` |
 | Optimal split | O(n) without a fleet limit | `RoutingProblem._optimal_split` |
 | QPSO iteration | O(P n log n) | `qpso.py` |
 | 2-opt pass | O(n^2), exact delta in O(1) | `local_search.two_opt` |

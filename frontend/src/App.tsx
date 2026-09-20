@@ -19,6 +19,7 @@ import type {
   Preset,
   ProblemSpec,
   SnapshotInfo,
+  TimeWindow,
   TrafficStatus,
 } from "./api/types";
 import BenchmarkPanel from "./components/BenchmarkPanel";
@@ -50,6 +51,8 @@ export default function App() {
   // Demands are drawn by the server on the first solve, then kept so that re-solving after a
   // traffic change is the *same* problem under different conditions.
   const [demands, setDemands] = useState<Record<string, number> | null>(null);
+  // Demo time windows too: drawn by the server once, then kept for the same stops.
+  const [windows, setWindows] = useState<Record<string, TimeWindow> | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"results" | "benchmark">("results");
@@ -74,6 +77,7 @@ export default function App() {
     setResult(null);
     setBenchmark(null);
     setDemands(null);
+    setWindows(null);
   };
 
   function refreshSnapshots(view: GraphView) {
@@ -104,6 +108,7 @@ export default function App() {
 
   function problemBody(): ProblemSpec {
     const covered = demands !== null && stops.every((s) => String(s) in demands);
+    const windowsCovered = windows !== null && stops.every((s) => String(s) in windows);
     return {
       graph_id: graph!.summary.graph_id,
       depot,
@@ -112,6 +117,7 @@ export default function App() {
       n_vehicles: params.nVehicles,
       vehicle_capacity: params.capacity,
       cost_weights: normalizedWeights(params.weights),
+      ...(params.timeWindows ? { time_windows: windowsCovered ? windows : undefined, random_windows: !windowsCovered, service_time_min: params.serviceTime } : {}),
       seed: params.seed,
     };
   }
@@ -142,6 +148,7 @@ export default function App() {
     if (out) {
       setResult(out);
       setDemands(out.problem.demands);
+      setWindows(out.problem.time_windows);
       setTab("results");
     }
   }
@@ -162,6 +169,7 @@ export default function App() {
     if (out) {
       setBenchmark(out);
       setDemands(out.problem.demands);
+      setWindows(out.problem.time_windows);
       setTab("benchmark");
     }
   }

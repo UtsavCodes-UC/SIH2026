@@ -8,7 +8,7 @@ from app.api.graph import lookup
 from app.core.vrp_formulation import split_at_depot
 from app.schemas.solve import OptimizeRequest, OptimizeResponse
 from app.services.graph_store import GraphStore, get_store
-from app.services.problem_builder import resolve_problem
+from app.services.problem_builder import InvalidProblemError, resolve_problem
 from app.services.solver import solve
 from app.services.views import problem_warnings, resolved_problem, route_outputs
 
@@ -20,6 +20,10 @@ def optimize(req: OptimizeRequest, store: GraphStore = Depends(get_store)) -> Op
     stored = lookup(store, req.graph_id)
     with stored.lock:  # edge weights must not change mid-solve
         request = resolve_problem(stored, req)
+        if req.algorithm == "route_search" and request.time_windows:
+            raise InvalidProblemError(
+                "the route search does not handle time windows yet; use QPSO, PSO, GA or nearest neighbour for problems with windows"
+            )
         solution = solve(
             stored.graph, request, req.algorithm, req.n_particles, req.n_iterations, req.seed, req.polish,
             warm_start=req.warm_start, time_limit_sec=req.time_limit_sec,
@@ -44,6 +48,9 @@ def optimize(req: OptimizeRequest, store: GraphStore = Depends(get_store)) -> Op
         total_time_min=sum(r.time_min for r in outputs),
         total_distance_km=sum(r.distance_km for r in outputs),
         total_delay_min=sum(r.delay_min for r in outputs),
+        total_late_min=evaluation.lateness_min,
+        total_wait_min=evaluation.waiting_min,
+        late_stops=evaluation.late_stops,
         capacity_violation=evaluation.capacity_violation,
         feasible=evaluation.feasible,
         raw_cost=solution.raw.best_cost,
