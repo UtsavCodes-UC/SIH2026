@@ -20,6 +20,9 @@ from app.services.graph_store import StoredGraph
 from app.services.live_traffic_service import TrafficRequestError
 
 SNAPSHOT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "traffic_snapshots"
+# Recordings that ship with the repo (backend/data/recorded_traffic/, with its README) so a fresh container or cloud instance can
+# replay real traffic without a live fetch. The user's own recordings in SNAPSHOT_DIR come first, and saving always writes there.
+BUNDLED_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "recorded_traffic"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
@@ -34,6 +37,17 @@ def _path_for(snapshot_id: str) -> Path:
     if path.parent != SNAPSHOT_DIR.resolve():
         raise SnapshotNotFound(snapshot_id)
     return path
+
+
+def _find(snapshot_id: str) -> Path | None:
+    """Where a recording lives: the user's folder first, then the bundled one; None if neither has it."""
+    if not _SAFE_ID.match(snapshot_id):
+        raise SnapshotNotFound(snapshot_id)
+    for folder in (SNAPSHOT_DIR, BUNDLED_DIR):
+        path = (folder / f"{snapshot_id}.json").resolve()
+        if path.parent == folder.resolve() and path.is_file():
+            return path
+    return None
 
 
 def _info(snapshot_id: str, payload: dict) -> SnapshotInfo:
@@ -70,20 +84,25 @@ def save_snapshot(stored: StoredGraph) -> SnapshotInfo:
 
 
 def list_snapshots(stored: StoredGraph) -> list[SnapshotInfo]:
-    if stored.key is None or not SNAPSHOT_DIR.is_dir():
+    if stored.key is None:
         return []
-    found = []
-    for path in SNAPSHOT_DIR.glob(f"{stored.key}__*.json"):
-        try:
-            found.append(_info(path.stem, json.loads(path.read_text(encoding="utf-8"))))
-        except (OSError, ValueError):
-            continue  # unreadable or corrupt file: skip it rather than fail the listing
-    return sorted(found, key=lambda s: s.captured_at or "", reverse=True)
+    found: dict[str, SnapshotInfo] = {}
+    for folder in (SNAPSHOT_DIR, BUNDLED_DIR):
+        if not folder.is_dir():
+            continue
+        for path in folder.glob(f"{stored.key}__*.json"):
+            if path.stem in found:
+                continue  # the same recording in both folders is listed once
+            try:
+                found[path.stem] = _info(path.stem, json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                continue  # unreadable or corrupt file: skip it rather than fail the listing
+    return sorted(found.values(), key=lambda s: s.captured_at or "", reverse=True)
 
 
 def apply_snapshot(stored: StoredGraph, snapshot_id: str) -> TrafficInfo:
-    path = _path_for(snapshot_id)
-    if not path.is_file():
+    path = _find(snapshot_id)
+    if path is None:
         raise SnapshotNotFound(snapshot_id)
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("graph_key") != stored.key:

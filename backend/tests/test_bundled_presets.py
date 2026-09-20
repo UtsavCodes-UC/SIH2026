@@ -38,3 +38,42 @@ def test_other_places_still_go_to_the_internet(no_internet):
 def test_a_refresh_bypasses_the_bundled_copy(no_internet):
     with pytest.raises(osm_loader.CityLoadError, match="could not fetch"):
         load_city_graph(PRESETS[0]["lat"], PRESETS[0]["lon"], radius_m=RADIUS, refresh=True)
+
+
+# ---- loading the same city again is cheap, and never shares state ------------------------------------------------------------
+
+
+def test_a_second_load_does_not_parse_the_map_again(no_internet, monkeypatch):
+    import osmnx
+
+    lat, lon = PRESETS[2]["lat"], PRESETS[2]["lon"]
+    first = load_city_graph(lat, lon, radius_m=RADIUS)
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("parsed the map file again")
+
+    monkeypatch.setattr(osmnx, "load_graphml", refuse)
+    second = load_city_graph(lat, lon, radius_m=RADIUS)
+
+    assert second.node_count == first.node_count and second.edge_count == first.edge_count
+    u, v = next(iter(first.graph.edges()))
+    assert second.graph[u][v]["distance_km"] == first.graph[u][v]["distance_km"]
+    assert "shape" in second.graph[u][v] or "shape" not in first.graph[u][v]
+
+
+def test_each_load_is_its_own_copy(no_internet):
+    lat, lon = PRESETS[0]["lat"], PRESETS[0]["lon"]
+    a = load_city_graph(lat, lon, radius_m=RADIUS)
+    u, v = next(iter(a.graph.edges()))
+    a.update_congestion(u, v, 4.0)
+
+    b = load_city_graph(lat, lon, radius_m=RADIUS)
+
+    assert b.graph[u][v]["congestion_factor"] != 4.0 and b is not a
+
+
+def test_the_warm_up_loads_all_four_presets_offline(no_internet):
+    osm_loader.warm_presets()
+
+    cached = {p.name for p in osm_loader.CACHE_DIR.glob("*.graphml")}
+    assert len(cached) == len(PRESETS)

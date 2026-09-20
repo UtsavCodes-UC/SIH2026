@@ -1,0 +1,17 @@
+# Render Blueprint: deploys this repository as one free Docker web service.
+#
+#   Render dashboard -> New -> Blueprint -> pick this repository -> Apply
+#
+# The service name becomes the address: https://quantum-inspired-route-optimizer.onrender.com (a suffix is added if the name is taken).
+# Environment variables are deliberately not set here: PORT is provided by Render, WARM_PRESETS is a default in the Dockerfile, and the
+# TomTom key is added by hand in the service's Environment tab (TOMTOM_API_KEY), so it never appears in the repository.
+services:
+  - type: web
+    name: quantum-inspired-route-optimizer
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit

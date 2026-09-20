@@ -19,8 +19,11 @@ scenario" demonstration deliverable.
 from __future__ import annotations
 
 import json
+import os
+import pickle
 import re
 import shutil
+import threading
 from pathlib import Path
 
 import networkx as nx
@@ -32,6 +35,12 @@ CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "cache"
 # The four preset places (at the UI's default 1200 m radius) ship with the repo, so a fresh clone, a fresh Docker container or a
 # fresh cloud instance loads them at once instead of downloading from OpenStreetMap (map data (c) OpenStreetMap contributors, ODbL).
 PRESET_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "presets"
+
+# Parsing a map file and converting it is the slow part of loading a city (about a second on a laptop, half a minute on a small free
+# host). The converted graph is kept in memory as bytes, so every later load of the same file is an unpickle and returns a fresh
+# copy: sessions never share edits. Keyed by the file too, so a re-downloaded map is never served from the memo.
+_CITY_MEMO: dict[tuple, bytes] = {}
+_CITY_MEMO_MAX = 12
 
 # Typical urban speeds (km/h) when a segment has no usable maxspeed tag.
 DEFAULT_SPEED_KPH = {
@@ -130,7 +139,23 @@ def _seed_from_presets(path: Path) -> None:
     bundled = PRESET_DIR / path.name
     if not path.exists() and bundled.is_file():
         path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(bundled, path)
+        partial = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")  # copy, then rename: never a half-written file
+        shutil.copyfile(bundled, partial)
+        partial.replace(path)
+
+
+def _memo_key(path: Path) -> tuple:
+    stat = path.stat()
+    return (str(path), stat.st_mtime_ns, stat.st_size)
+
+
+def warm_presets() -> None:
+    """Load the four preset places once, so the first visitor does not wait for the conversion (run in the background at start-up)."""
+    for preset in PRESETS:
+        try:
+            load_city_graph(preset["lat"], preset["lon"], radius_m=1200)
+        except Exception:  # noqa: BLE001 - warming is best effort; a failure just means that city loads on demand
+            continue
 
 
 def _configure_osmnx(ox) -> None:
@@ -148,11 +173,14 @@ def load_city_graph(
     refresh: bool = False,
 ) -> TrafficGraph:
     """Fetch (or load from the disk cache) the road network within `radius_m` of a point."""
-    import osmnx as ox  # heavy import; only needed when a city is actually requested
-
     path = _cache_path(lat, lon, radius_m, network_type)
     if not refresh:
         _seed_from_presets(path)
+        if path.exists() and (blob := _CITY_MEMO.get(_memo_key(path))) is not None:
+            return pickle.loads(blob)
+
+    import osmnx as ox  # heavy import; only needed when a city is actually requested
+
     if path.exists() and not refresh:
         osm_graph = ox.load_graphml(path)
     else:
@@ -167,7 +195,11 @@ def load_city_graph(
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         ox.save_graphml(osm_graph, path)
 
-    return to_traffic_graph(osm_graph, lat, lon)
+    graph = to_traffic_graph(osm_graph, lat, lon)
+    if len(_CITY_MEMO) >= _CITY_MEMO_MAX:
+        _CITY_MEMO.pop(next(iter(_CITY_MEMO)))
+    _CITY_MEMO[_memo_key(path)] = pickle.dumps(graph, protocol=pickle.HIGHEST_PROTOCOL)
+    return graph
 
 
 def _geocode_cache_path() -> Path:

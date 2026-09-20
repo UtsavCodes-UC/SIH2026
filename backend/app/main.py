@@ -1,4 +1,6 @@
 import mimetypes
+import os
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
@@ -8,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import benchmark, graph, optimize, shortest_path, traffic
 from app.core.vrp_formulation import UnreachableStopError
-from app.data.osm_loader import CityLoadError, UnusablePlaceError
+from app.data.osm_loader import CityLoadError, UnusablePlaceError, warm_presets
 from app.data.tomtom import TrafficProviderError
 from app.services.live_traffic_service import TrafficRequestError, TrafficUnavailableError
 from app.services.problem_builder import InvalidProblemError
@@ -70,6 +72,10 @@ def api_health() -> dict:
 
 
 app.include_router(api)
+
+# On a small free host, converting a city map is slow: WARM_PRESETS=1 loads the four presets in the background at start-up.
+if os.environ.get("WARM_PRESETS", "").lower() in ("1", "true", "yes"):
+    threading.Thread(target=warm_presets, name="warm-presets", daemon=True).start()
 
 # The in-app Guide uses .webp screenshots; some systems (Windows, slim Docker images) don't know that type by default.
 mimetypes.add_type("image/webp", ".webp")
