@@ -217,9 +217,9 @@ export default function Sidebar(props: Props) {
           </div>
         </header>
 
-        <button className="about-bar" onClick={() => setAboutOpen((open) => !open)}>
-          <span className="about-bar-icon">ⓘ</span>
-          <span className="about-bar-label">About</span>
+        <button className="about-bar" onClick={() => setAboutOpen((open) => !open)} title="How to use this app, with screenshots">
+          <span className="about-bar-icon">?</span>
+          <span className="about-bar-label">Guide</span>
           <span className="about-bar-chevron">›</span>
         </button>
       </div>
@@ -231,10 +231,10 @@ export default function Sidebar(props: Props) {
           type="button"
           className="rail-item"
           onClick={() => setAboutOpen((open) => !open)}
-          title="About"
-          aria-label="About"
+          title="Guide"
+          aria-label="Guide"
         >
-          <span className="rail-icon">ⓘ</span>
+          <span className="rail-icon">?</span>
         </button>
         <button
           type="button"

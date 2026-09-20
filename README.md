@@ -78,6 +78,11 @@ Open http://localhost:8000. If that port is taken (for example by a local `uvico
 
 ## Using the UI
 
+The **Guide** button at the top of the sidebar opens a plain-language walkthrough of every control, with screenshots. Its images
+are in `frontend/public/guide/`; after changing the UI, regenerate them with the app running:
+`cd frontend && BASE=http://127.0.0.1:8000 npm run guide:screenshots` (needs Node 22+ and Google Chrome; see the top of
+`frontend/scripts/capture-guide.mjs`).
+
 1. **Road network** — generate a synthetic network, or load a real place: pick one of the four presets,
    or choose *Search for another place…* and start typing: suggestions appear as you type (arrow keys +
    Enter, or click), so the spelling is right and the map lands exactly on the spot you picked. Enter

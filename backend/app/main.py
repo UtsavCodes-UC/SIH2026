@@ -1,3 +1,4 @@
+import mimetypes
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
@@ -69,6 +70,9 @@ def api_health() -> dict:
 
 
 app.include_router(api)
+
+# The in-app Guide uses .webp screenshots; some systems (Windows, slim Docker images) don't know that type by default.
+mimetypes.add_type("image/webp", ".webp")
 
 # One-process deployment: if the frontend has been built (npm run build), serve it from here too.
 _frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"

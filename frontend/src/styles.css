@@ -1171,6 +1171,101 @@ code {
   font-weight: 600;
 }
 
+/* ---------- guide content ---------- */
+.about-bar-icon {
+  font-weight: 700;
+}
+
+.guide-content {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.about-body section {
+  scroll-margin-top: 70px;
+}
+
+.guide-nav {
+  position: sticky;
+  top: -16px; /* sits over the scroll container's padding, so it hugs the top edge */
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -16px -16px 18px;
+  padding: 12px 16px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.guide-steps {
+  margin: 8px 0;
+  padding-left: 22px;
+}
+
+.guide-steps li {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.guide-fig {
+  margin: 12px 0 18px;
+}
+
+.guide-fig img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  background: #fff;
+}
+
+.guide-fig.narrow img {
+  max-width: 340px;
+}
+
+.guide-fig figcaption {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.about-body .guide-note {
+  padding: 8px 12px;
+  background: var(--bg);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 13.5px;
+}
+
+.guide-badges {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0;
+}
+
+.guide-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.guide-badge-row > span {
+  flex: 1;
+  min-width: 220px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.about-body code {
+  font-size: 12.5px;
+}
+
 /* ---------- sticky header (title + about bar) ---------- */
 .sidebar-sticky-header {
   position: sticky;
