@@ -51,6 +51,13 @@ instances) and lands within 0.1% of OR-Tools' guided local search, but a hybrid
 to the architecture (local search plus kicks and restarts), not to the quantum
 update. On the multi-vehicle problem it adds nothing over warm start + polish.
 
+Finding 12 then tested the most-suggested fix for the multi-vehicle problem, an
+optimal Split decoder in place of the greedy cut. It is worth about 1% for every
+method (including plain nearest neighbour), which is the size of the noise from
+changing the local search's starting point, and it is 30-80x slower per evaluation.
+Against a new OR-Tools capacitated reference (60 s), our multi-vehicle pipelines are
+still 4-6% above it whichever decoder is used, so the remaining gap is not the decoder.
+
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
 numbers are superseded by Finding 7.**
@@ -472,6 +479,84 @@ python scripts/hybrid_experiments.py --problem tsp --stops 100 --instances 20 --
 python scripts/hybrid_experiments.py --problem tsp --stops 100 --instances 20 --variants h_qpso a_init a_beta a_elite a_ls a_restart d_init d_beta d_elite d_ls d_restart --csv results/hybrid/tsp100_ablation.csv
 python scripts/hybrid_experiments.py --problem cvrp --stops 100 --instances 20 --variants pso_warm qpso_warm h_qpso h_pso ga --reference pso_warm
 python scripts/summarize_hybrid.py
+```
+
+## Finding 12 — an optimal Split decoder is worth about 1%, and is not what separates us from OR-Tools
+
+**The question.** Multi-vehicle routing here cuts one visiting order (the giant tour) into vehicle routes with a
+greedy rule. An external review called replacing it with the optimal Split (Prins) the most important remaining
+experiment: every permutation would be scored at its best partition, and local-search results could be written
+back into the search safely. Is the greedy decoder what holds the multi-vehicle search back?
+
+**What was built.** `RouteRequest.decoder = "optimal"` (default `"greedy"`, so every earlier number stands).
+For a fixed order the cheapest capacity-respecting partition is found in linear time with a sliding-window
+minimum (Vidal 2016), and with a layered version when the fleet limit binds; when no partition fits the
+fleet it falls back to the greedy rule so the soft-penalty behaviour is unchanged. Tests check it against
+exhaustive search over every possible cut on 9-stop instances (including the fleet-limited case), that it is
+never worse than greedy, that `cost()` always agrees with the routes it describes, and that concatenating any
+route set (for example the output of `improve_routes`) and splitting optimally never costs more than the
+routes did. That last property is the one greedy decoding lacks.
+
+**Reference.** OR-Tools' capacitated routing with guided local search, 60 s per instance, same fleet and
+capacity, run in a separate environment (`backend/results/hybrid/cvrp100_best_known.csv`): mean **3,009.5** on
+the 20 instances of Findings 10-11 (100 customers, seeds 500-519). It is a strong reference, not a proven optimum.
+
+**1. Same method, greedy vs optimal decoder** (cost after the same final polish; optimal wins / ties / losses
+per instance; sign test on the optimal being better):
+
+| method | greedy | optimal | change | optimal wins/ties/losses | p | above OR-Tools, optimal / greedy |
+|---|---|---|---|---|---|---|
+| nearest neighbour + polish | 3,201 | 3,161 | +1.3% | 9/7/4 | 0.13 | +5.1% / +6.3% |
+| warm PSO | 3,181 | 3,148 | +1.0% | 11/0/9 | 0.41 | +4.7% / +5.8% |
+| warm QPSO | 3,187 | 3,156 | +1.0% | 11/2/7 | 0.24 | +4.9% / +5.9% |
+| warm GA | 3,148 | 3,120 | +0.9% | 10/0/10 | 0.59 | +3.8% / +4.7% |
+| hybrid QPSO | 3,192 | 3,146 | +1.4% | 13/3/4 | 0.025 | +4.6% / +6.1% |
+| hybrid PSO | 3,183 | 3,148 | +1.1% | 11/3/6 | 0.17 | +4.6% / +5.7% |
+
+Every method gains about 1%, but for five of the six the gain is not statistically clear on 20 instances.
+The three swarm methods stay tied with each other under either decoder (warm QPSO vs warm PSO with the optimal
+decoder: 7 wins, 12 losses, -0.2%), and the warm GA stays slightly ahead.
+
+**2. It does not come from the finished routes.** Concatenating the finished, polished routes and re-cutting
+them optimally lowers cost by **0.00%** for both nearest neighbour and warm PSO: the polished routes are already
+optimal cuts of themselves.
+
+**3. It looks like a different starting point for the local search.** What `improve_routes` reaches on the
+same 20 instances from different starts (mean cost):
+
+| start | cost | vs A |
+|---|---|---|
+| A nearest neighbour, greedy cut | 3,201 | |
+| B nearest neighbour, optimal cut | 3,161 | +1.25% (better on only 9 of 20) |
+| C' best of 10 randomized starts, greedy cut | 3,160 | +1.29% |
+| D' best of 10 randomized starts, optimal cut | 3,179 | +0.71% |
+| C mean of 10 randomized starts, greedy cut | 3,340 | -4.34% |
+
+Taking the best of ten randomized starts gains as much as the decoder does, and the average random start is
+much worse. The decoder's ~1% is the size of the local search's start-to-start variation.
+
+**4. It is expensive in the loop.** Per evaluation at 100 customers: 0.8-2.2 ms against 0.03-0.08 ms for the
+greedy cut (30-80x; times here and below are with 8 processes running in parallel). For most random orders the fleet limit binds and the layered version runs, and the
+swarm's orders start out random. A 100-customer run takes 80-110 s instead of 7-15 s. The layered search was
+not optimized (restricting each layer to the band of feasible route counts could plausibly give about 4x).
+
+**What this supports, and what it does not.**
+
+- The greedy decoder is not what holds the multi-vehicle search back. Whichever decoder is used, the
+  pipelines end 3.8-5.1% above OR-Tools' 60 s solution (4.7-6.3% with greedy), so there is real headroom and it is
+  elsewhere: OR-Tools searches with a much richer set of inter-route moves and guided local search.
+- The decoder's real value is the write-back property, which lets inter-route local search run inside the
+  swarm loop. Whether that is worth its cost is Finding 13's question.
+- Not supported: that QPSO gains more from a better decoder than PSO does. All swarm methods gained alike.
+
+**Caveats.** 20 instances, one algorithm seed, synthetic graphs. The reference is one OR-Tools configuration
+for 60 s. The hybrid engines' in-loop local search is still per-route 2-opt.
+
+Reproduce (from `backend/`; the CSVs are in `results/hybrid/`):
+
+```
+python scripts/hybrid_experiments.py --problem cvrp --stops 100 --instances 20 --decoder optimal --variants pso_warm qpso_warm ga_warm h_qpso h_pso --reference pso_warm --csv results/hybrid/cvrp100_optimal.csv
+python scripts/decoder_analysis.py
 ```
 
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)

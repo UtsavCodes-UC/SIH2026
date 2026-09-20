@@ -10,7 +10,9 @@ Variants (`--list`):
     d_*                     ablation, drop one component from the full hybrid QPSO
 
 Problems: `--problem tsp` is a single vehicle visiting `--stops` stops; `--problem cvrp` is a fleet with
-capacities (as in Finding 10). Every variant gets the same particles x iterations budget.
+capacities (as in Finding 10). Every variant gets the same particles x iterations budget. For cvrp,
+`--decoder optimal` cuts every visiting order into routes with the optimal Split instead of the greedy rule
+(Finding 12); the final polish and the OR-Tools reference are the same either way.
 
 "raw" is what the method itself returned (for the hybrids that includes the 2-opt they run inside their
 search); "+polish" is that result after the same final polish for everyone (2-opt, plus moving stops between
@@ -73,6 +75,7 @@ VARIANTS: dict[str, tuple[str, dict]] = {
     "ga": ("ga", {}),
     "pso_warm": ("pso", {"warm_start": True}),
     "qpso_warm": ("qpso", {"warm_start": True}),
+    "ga_warm": ("ga", {"warm_start": True}),
     "h_qpso": ("hybrid", {"operator": "qpso"}),
     "h_pso": ("hybrid", {"operator": "pso"}),
 }
@@ -82,7 +85,7 @@ for _name, _flags in DROP.items():
     VARIANTS[f"d_{_name}"] = ("hybrid", {"operator": "qpso", **_flags})
 
 
-def build_instance(problem: str, n_stops: int, seed: int, utilization: float):
+def build_instance(problem: str, n_stops: int, seed: int, utilization: float, decoder: str = "greedy"):
     graph = generate_synthetic_graph(n_nodes=2 * n_stops, seed=seed)
     stops = list(range(1, n_stops + 1))
     if problem == "tsp":
@@ -90,13 +93,13 @@ def build_instance(problem: str, n_stops: int, seed: int, utilization: float):
     rng = random.Random(seed)
     demands = {c: rng.randint(5, 25) for c in stops}
     n_vehicles = math.ceil(sum(demands.values()) / (utilization * CAPACITY))
-    return graph, RouteRequest(depot=0, stops=stops, demands=demands, vehicle_capacity=CAPACITY, n_vehicles=n_vehicles)
+    return graph, RouteRequest(depot=0, stops=stops, demands=demands, vehicle_capacity=CAPACITY, n_vehicles=n_vehicles, decoder=decoder)
 
 
 def run_task(task):
     """One (variant, instance) run. Module-level so worker processes can import it."""
-    name, algorithm, kwargs, problem_kind, n_stops, utilization, seed, n_iterations, n_particles, algo_seed = task
-    graph, request = build_instance(problem_kind, n_stops, seed, utilization)
+    name, algorithm, kwargs, problem_kind, n_stops, utilization, seed, n_iterations, n_particles, algo_seed, decoder = task
+    graph, request = build_instance(problem_kind, n_stops, seed, utilization, decoder)
     problem = RoutingProblem(graph, request)
     t0 = time.perf_counter()
     if algorithm == "nn":
@@ -128,6 +131,7 @@ def main():
     parser.add_argument("--stops", type=int, default=100)
     parser.add_argument("--instances", type=int, default=20)
     parser.add_argument("--utilization", type=float, default=0.85, help="cvrp only")
+    parser.add_argument("--decoder", choices=["greedy", "optimal"], default="greedy", help="cvrp only: how an order is cut into routes")
     parser.add_argument("--first-instance-seed", type=int, default=None)
     parser.add_argument("--iterations", type=int, default=800)
     parser.add_argument("--particles", type=int, default=40)
@@ -152,10 +156,10 @@ def main():
     first = args.first_instance_seed if args.first_instance_seed is not None else FIRST_SEED[args.problem]
     seeds = [first + k for k in range(args.instances)]
     tasks = [
-        (name, *VARIANTS[name], args.problem, args.stops, args.utilization, seed, args.iterations, args.particles, args.algo_seed)
+        (name, *VARIANTS[name], args.problem, args.stops, args.utilization, seed, args.iterations, args.particles, args.algo_seed, args.decoder)
         for name in names
         for seed in seeds
-    ] + [("nn", "nn", {}, args.problem, args.stops, args.utilization, seed, 0, 0, 0) for seed in seeds]
+    ] + [("nn", "nn", {}, args.problem, args.stops, args.utilization, seed, 0, 0, 0, args.decoder) for seed in seeds]
 
     t0 = time.perf_counter()
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
@@ -183,7 +187,7 @@ def main():
                 writer.writerow([args.problem, args.stops, name, seed, f"{raw:.4f}", f"{polished:.4f}", f"{seconds:.2f}", int(feasible)])
 
     print(
-        f"\n{args.problem.upper()} with {args.stops} stops, {args.instances} instances (seeds {seeds[0]}-{seeds[-1]}), "
+        f"\n{args.problem.upper()} ({args.decoder} decoder) with {args.stops} stops, {args.instances} instances (seeds {seeds[0]}-{seeds[-1]}), "
         f"{args.particles} particles x {args.iterations} iterations, algo seed {args.algo_seed}  [{elapsed:.0f}s wall]"
     )
     print(f"cells: win/tie/loss against {reference}, mean improvement (positive = better than {reference}), sign-test p\n")
