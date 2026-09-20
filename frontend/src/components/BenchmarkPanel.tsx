@@ -10,7 +10,11 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
   }
 
   const { algorithms } = benchmark;
-  const bestRaw = Math.min(...algorithms.map((a) => a.raw_cost));
+  // The route search has no separate polish: its raw cost is its whole result. So when it is in the table the fair
+  // comparison is each row's final cost (after the polish, where there is one), and that is what gets highlighted.
+  const hasSearch = algorithms.some((a) => a.name === "route_search");
+  const comparedCost = (a: (typeof algorithms)[number]) => (hasSearch ? a.polished_cost ?? a.raw_cost : a.raw_cost);
+  const bestCost = Math.min(...algorithms.map(comparedCost));
   const hasGaps = algorithms.some((a) => a.raw_gap_pct !== null);
   const barData = algorithms.map((a) => ({
     name: ALGORITHM_LABELS[a.name] ?? a.name,
@@ -44,7 +48,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
             </thead>
             <tbody>
               {algorithms.map((a) => (
-                <tr key={a.name} className={a.raw_cost === bestRaw ? "best" : undefined}>
+                <tr key={a.name} className={comparedCost(a) === bestCost ? "best" : undefined}>
                   <td>
                     <i className="swatch" style={{ background: ALGORITHM_COLORS[a.name] ?? "#888" }} />
                     {ALGORITHM_LABELS[a.name] ?? a.name}
@@ -66,7 +70,10 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
             raw column is the like-for-like algorithm comparison; the polish helps every method and narrows the differences.
             {benchmark.warm_start
               ? " Warm start is on: every search begins with the same nearest-neighbour route, which is fair but shrinks the gaps between them; turn it off to compare them from scratch."
-              : " Warm start is off: every search begins from random routes."}{" "}One problem instance is an illustration, not a statistical result.
+              : " Warm start is off: every search begins from random routes."}
+            {hasSearch &&
+              " Route search has no separate polish (it starts from nearest neighbour and includes its own local search), so its cost is its whole result: compare it with the other rows' + Polish cost, not their raw cost. The highlighted row has the lowest of those final costs."}{" "}
+            One problem instance is an illustration, not a statistical result.
           </p>
         </div>
 

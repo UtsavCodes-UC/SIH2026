@@ -6,8 +6,9 @@ import random
 import pytest
 
 from app.core.baselines.dijkstra_baseline import nearest_neighbor_order
-from app.core.route_search import ALL_OPERATORS, RouteSearch, improve_with_search
-from app.core.vrp_formulation import RouteRequest, RoutingProblem
+from app.core import route_search
+from app.core.route_search import ALL_OPERATORS, MAX_HISTORY, RouteSearch, improve_with_search, solve_with_search
+from app.core.vrp_formulation import RouteRequest, RoutingProblem, split_at_depot
 from app.data.synthetic_graph_generator import generate_synthetic_graph
 
 PENALTY = 1000.0
@@ -247,3 +248,89 @@ def test_improve_with_search_is_routes_in_routes_out():
     assert sorted(s for r in out for s in r[1:-1]) == problem.request.stops
     assert evaluate(problem, out) <= evaluate(problem, start) + 1e-9
     assert set(ALL_OPERATORS) >= {"relocate", "swap", "two_opt_star", "swap_star", "two_opt"}
+
+
+# ---- early stop and the algorithm-shaped entry point ---------------------------------------------------------------------------
+
+
+def test_patience_stops_the_search_after_that_many_iterations_without_a_new_best():
+    problem = make(12, 506)
+    search = RouteSearch(problem, start_routes(problem), seed=1)
+    search.local_search()
+    settled = search.cost
+    trace = search.run_ils(2000, patience=25)
+    assert len(trace) < 2000  # a 12-stop problem is settled long before that
+    improved_at = [i for i, cost in enumerate(trace) if cost < (trace[i - 1] if i else settled) - 1e-9]
+    idle = len(trace) - 1 - improved_at[-1] if improved_at else len(trace)
+    assert idle == 25  # it stopped as soon as 25 iterations in a row passed without a new best
+
+    unlimited = RouteSearch(problem, start_routes(problem), seed=1)
+    unlimited.local_search()
+    assert len(unlimited.run_ils(100)) == 100  # no patience: runs every iteration asked for
+
+
+def check_result(problem, result):
+    """The result is a valid solution whose reported cost is what the rest of the code base computes for it."""
+    request = problem.request
+    routes = split_at_depot(result.best_route, request.depot)
+    assert sorted(s for r in routes for s in r[1:-1]) == sorted(request.stops)
+    assert len(routes) <= request.n_vehicles
+    assert result.best_cost == pytest.approx(evaluate(problem, [r[1:-1] for r in routes]))
+
+
+def test_solve_with_search_returns_the_shape_every_algorithm_returns():
+    problem = make(40, 507)
+    result = solve_with_search(problem, time_limit_sec=5, max_iterations=40, seed=1)
+    check_result(problem, result)
+    assert result.iterations == 40 and result.n_particles == 1 and result.runtime_sec > 0
+    history = result.convergence_history
+    assert len(history) == 40 + 2  # the start, the local search, then one point per iteration
+    assert all(later <= earlier + 1e-9 for earlier, later in zip(history, history[1:]))
+    assert history[-1] == pytest.approx(result.best_cost)
+    assert history[0] > history[1]  # the local search improved the nearest-neighbour start
+
+
+def test_solve_with_search_is_repeatable_when_the_iterations_are_capped():
+    problem = make(30, 508)
+    a = solve_with_search(problem, max_iterations=25, seed=4)
+    b = solve_with_search(problem, max_iterations=25, seed=4)
+    assert a.best_route == b.best_route and a.best_cost == b.best_cost
+
+
+def test_solve_with_search_honours_the_time_limit():
+    problem = make(60, 509)
+    result = solve_with_search(problem, time_limit_sec=1.0, seed=1)
+    check_result(problem, result)
+    assert result.runtime_sec < 3.0  # the limit, plus at most an iteration or two and the setup
+    assert result.iterations > 0
+
+
+def test_solve_with_search_beats_its_own_nearest_neighbour_start():
+    problem = make(50, 510)
+    result = solve_with_search(problem, time_limit_sec=5, max_iterations=30, seed=1)
+    start_cost = evaluate(problem, [r[1:-1] for r in start_routes(problem)])
+    assert result.best_cost < start_cost
+
+
+def test_solve_with_search_thins_a_long_history_and_keeps_the_last_point(monkeypatch):
+    problem = make(20, 511)
+    # a 20-stop problem stops early on patience, so pretend the iterated search ran for a long time
+    monkeypatch.setattr(route_search.RouteSearch, "run_ils", lambda self, *a, **k: [self.cost] * (MAX_HISTORY + 400))
+    result = solve_with_search(problem, seed=1)
+    assert len(result.convergence_history) == MAX_HISTORY
+    assert result.convergence_history[-1] == pytest.approx(result.best_cost)
+    check_result(problem, result)
+
+
+@pytest.mark.parametrize("n_stops,vehicles", [(1, 1), (1, 3), (2, 2), (5, 1)])
+def test_solve_with_search_handles_tiny_problems(n_stops, vehicles):
+    problem = make(n_stops, 512, vehicles=vehicles)
+    result = solve_with_search(problem, time_limit_sec=2, max_iterations=20, seed=1)
+    check_result(problem, result)
+
+
+def test_solve_with_search_on_one_vehicle_visits_every_stop_once():
+    graph = generate_synthetic_graph(n_nodes=60, seed=300)
+    problem = RoutingProblem(graph, RouteRequest(depot=0, stops=list(range(1, 21))))
+    result = solve_with_search(problem, time_limit_sec=2, max_iterations=10, seed=1)
+    assert sorted(result.best_route[1:-1]) == list(range(1, 21)) and result.best_route[0] == result.best_route[-1] == 0

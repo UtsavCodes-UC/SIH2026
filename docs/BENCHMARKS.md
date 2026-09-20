@@ -1,6 +1,6 @@
 # Benchmark results
 
-## Read this first — current headline (Findings 7-14)
+## Read this first — current headline (Findings 7-15)
 
 The problem statement's core claim is that QPSO gives "stronger global
 search, faster convergence, and a better balance between exploration and
@@ -80,6 +80,11 @@ Finding 14 then measured it against the standard CVRPLIB "X" instances, whose op
 2%), beating OR-Tools' 60 s solution, which averages 5.5% above, on 19 of 22 instances at 10 s. The app's default before
 this work averaged 10.2% above optimal. It is not a state-of-the-art solver: it stalls on some instances (4-6% above),
 and the instances are Euclidean, with no traffic or roads.
+
+The search is now an option in the app (the default is unchanged: QPSO with warm start and polish). Finding 15 compared
+the two at the sizes the app is used at, 15-100 stops on synthetic road graphs: the route search is cheaper by about 3% at
+15 stops and by 6-10% from 30 stops up, on every instance from 30 stops, and one second of it is already ahead of the
+default. Which one is the default is a product decision; the benchmark says the option is the better plan-finder.
 
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
@@ -729,7 +734,8 @@ hybrid engine.
   (HGS-CVRP) would very likely beat both; how far from optimal we are is measured in Finding 14.
 - Not tested: a swarm with the route search inside its loop (particles improved by the search every iteration). Only
   "swarm first, search after" was tested, so this finding does not show that a swarm cannot help in that role.
-- Not tested: other sizes, looser or tighter fleets (long routes make each iteration slower, see 5), real OSM graphs.
+- Not tested here: looser or tighter fleets (long routes make each iteration slower, see 5), real OSM graphs. Other sizes
+  on road graphs: Finding 15.
 
 **Caveats.** 20 instances, one algorithm seed per instance. The time-matched comparison uses times measured with 8
 processes running and reads nearest neighbour at the next multiple of 100 iterations, which favours it by up to 99
@@ -845,6 +851,59 @@ python scripts/cvrplib_benchmark.py --from-csv results/cvrplib/x_100_200.csv
 ```
 
 (`export` runs in the project environment; `solve` in any environment with `pip install ortools`.)
+
+## Finding 15 — as an option in the app, the route search finds cheaper plans than the default at every size tested
+
+**The question.** The route search (Finding 13) is now an option in the app, and the default is still QPSO with a warm
+start and the polish. Finding 14 compared the search with the older default at 100-199 customers on Euclidean
+instances. At the sizes the app is used at, 15 to 100 stops on a road network with directed, congested travel times,
+which of the two finds cheaper plans?
+
+**Setup** (`scripts/app_options_comparison.py`). Both run through the same `solve()` the API uses, on the same
+problems: the app's default 80-node, 8 km synthetic network (with more nodes when there are more stops), random stops and
+demands (5-25), fleet sized for about 85% utilisation with capacity 100, 20 instances per size (seeds 700-719), paired.
+The default is QPSO (40 particles x 800 iterations) with warm start and polish. The route search is read at time limits of
+1, 3 and 10 s. Cost is travel time plus 1,000 x overload; no solution of any method, on any of the 80 instances, overloaded
+a van.
+
+Mean cost; in brackets the mean of the per-instance differences from the default (negative = the route search is cheaper).
+The last column counts instances where the search at 1 s was cheaper / equal / dearer:
+
+| stops (vans) | default (its run time) | route search, 1 s | 3 s | 10 s | wins/ties/losses at 1 s |
+|---|---|---|---|---|---|
+| 15 (3) | 113.4 (1.7 s) | 109.4 (-3.4%) | 109.4 (-3.4%) | 109.4 (-3.4%) | 13/7/0 |
+| 30 (6) | 190.5 (1.0 s) | 178.3 (-6.4%) | 178.3 (-6.4%) | 178.2 (-6.4%) | 20/0/0 |
+| 60 (11) | 335.0 (2.2 s) | 301.4 (-9.7%) | 299.4 (-10.3%) | 298.7 (-10.5%) | 20/0/0 |
+| 100 (18) | 531.5 (4.6 s) | 493.8 (-7.2%) | 483.8 (-9.1%) | 479.2 (-10.0%) | 20/0/0 |
+
+- From 30 stops up the route search is cheaper on **every** instance (20 of 20 at each size and each time limit); the
+  smallest single improvement is 2.9% at 30 stops, 0.2% at 60 and 1.3% at 100 (at 1 s). At 15 stops it is never worse and
+  cheaper on 13 of 20; on the other 7 both find the same plan.
+- Most of the gain comes within one second, which is about what the default itself takes (1-5 s, measured with 8
+  processes running). More time helps mainly at 60 and 100 stops (100 stops: 7.2% cheaper at 1 s, 10.0% at 10 s). At 15 and 30
+  stops the answer is the same at 1, 3 and 10 s: the search has converged, and stops early (a 10 s limit ended after 6.7 s
+  on average at 15 stops and 7.5 s at 30).
+- This compares complete pipelines. It does not say the swarm is worse than the search at what a swarm does (Finding 13:
+  the swarm adds nothing once the search is strong), nor anything about QPSO with warm start switched off, the mode
+  meant for watching the algorithms compete from scratch.
+
+**What this supports, and what it does not.**
+
+- Supported: on synthetic road graphs of up to 100 stops with several vans, the route search option gives a cheaper plan
+  than the default, by about 3% at 15 stops and 6-10% from 30 stops up.
+- Not tested: real OpenStreetMap cities or live traffic (these instances are synthetic), a single vehicle (where the search
+  is slow; Finding 13), more than 100 stops in the app, giving the default more iterations than 40 x 800. 20 instances per
+  size and one algorithm seed per instance.
+- Which solver is the default is a product decision, not a benchmark result. It is unchanged (QPSO, the subject of the
+  project); making the route search the default is a one-line change in `frontend/src/lib/params.ts` (and
+  `backend/app/schemas/solve.py` for callers that name no algorithm).
+
+Reproduce (from `backend/`; the CSV is in `results/app_options/`):
+
+```
+python scripts/app_options_comparison.py --csv results/app_options/route_search_vs_default.csv
+python scripts/app_options_comparison.py --from-csv results/app_options/route_search_vs_default.csv
+```
 
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)
 

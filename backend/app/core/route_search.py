@@ -37,7 +37,9 @@ import time
 from collections import deque
 from typing import Sequence
 
+from app.core.baselines.dijkstra_baseline import nearest_neighbor_order
 from app.core.local_search import two_opt
+from app.core.types import OptimizationResult
 from app.core.vrp_formulation import RoutingProblem
 
 EPS = 1e-9
@@ -429,15 +431,18 @@ class RouteSearch:
         remove: tuple[int, int] = (4, 12),
         max_seconds: float | None = None,
         accept_worse: float = 0.0,
+        patience: int | None = None,
     ) -> list[float]:
         """Iterated local search from the current routes. Each iteration ruins and recreates a cluster, repairs
         locally and keeps the result if it is better than the current solution (or within `accept_worse` of its
-        cost, as a fraction). The best solution seen is restored at the end. Returns the best cost after each
-        iteration."""
+        cost, as a fraction). The best solution seen is restored at the end. Stops early after `iterations`, after
+        `max_seconds`, or (if given) after `patience` iterations in a row without a new best. Returns the best cost
+        after each iteration."""
         best = self.snapshot()
         best_cost = self.cost
         current_cost = self.cost
         trace = []
+        since_best = 0
         started = time.perf_counter()
         for _ in range(iterations):
             if max_seconds is not None and time.perf_counter() - started > max_seconds:
@@ -445,13 +450,17 @@ class RouteSearch:
             before = self.snapshot()
             dirty = self.ruin_and_recreate(self.rng.randint(*remove))
             self.local_search(dirty)
+            since_best += 1
             if self.cost < current_cost - EPS or self.cost < current_cost * (1 + accept_worse) - EPS:
                 current_cost = self.cost
                 if self.cost < best_cost - EPS:
                     best, best_cost = self.snapshot(), self.cost
+                    since_best = 0
             else:
                 self.restore(before)
             trace.append(best_cost)
+            if patience is not None and since_best >= patience:
+                break
         self.restore(best)
         return trace
 
@@ -471,3 +480,47 @@ def improve_with_search(
     if iterations:
         search.run_ils(iterations)
     return search.result_routes()
+
+
+MAX_HISTORY = 1000  # points kept of the search's progress curve, so a long run does not bloat an API response
+
+
+def solve_with_search(
+    problem: RoutingProblem,
+    penalty_weight: float = 1000.0,
+    time_limit_sec: float = 10.0,
+    max_iterations: int | None = None,
+    seed: int | None = None,
+) -> OptimizationResult:
+    """Nearest neighbour, then this module's local search, then iterated local search, as one algorithm that returns
+    the same result type as QPSO, PSO and GA so the API, the benchmark and the UI can treat it like any of them.
+
+    The iterated search stops at the time limit, at `max_iterations` if given, or when it has gone
+    `patience = 300 + 10 x stops` iterations without a new best (a small problem converges long before the time
+    limit; on 100 stops that is 1,300 iterations, about the length of a default run). `convergence_history` is the cost
+    of the nearest-neighbour start, the cost after the local search, then the best cost after each iteration, thinned to
+    at most MAX_HISTORY points with the last one kept. `iterations` counts the iterated-search iterations run.
+    """
+    started = time.perf_counter()
+    search = RouteSearch(problem, problem.split(nearest_neighbor_order(problem)), penalty_weight=penalty_weight, seed=seed)
+    history = [search.cost]
+    search.local_search()
+    history.append(search.cost)
+
+    patience = 300 + 10 * len(search.stops)
+    remaining = max(0.0, time_limit_sec - (time.perf_counter() - started))
+    trace = search.run_ils(max_iterations if max_iterations is not None else 10**9, max_seconds=remaining, patience=patience)
+    history.extend(trace)
+    if len(history) > MAX_HISTORY:
+        stride = (len(history) - 1) / (MAX_HISTORY - 1)
+        history = [history[round(i * stride)] for i in range(MAX_HISTORY)]
+
+    evaluation = problem.evaluate_routes(search.result_routes())
+    return OptimizationResult(
+        best_route=evaluation.route,
+        best_cost=evaluation.total_time_min + penalty_weight * evaluation.capacity_violation,
+        convergence_history=history,
+        runtime_sec=time.perf_counter() - started,
+        iterations=len(trace),
+        n_particles=1,
+    )

@@ -10,6 +10,7 @@ from app.core.baselines.genetic_algorithm import GeneticAlgorithm
 from app.core.graph_model import TrafficGraph
 from app.core.local_search import polish_result
 from app.core.qpso import QPSO
+from app.core.route_search import solve_with_search
 from app.core.types import OptimizationResult
 from app.core.vrp_formulation import RouteRequest, RoutingProblem
 
@@ -35,6 +36,7 @@ def solve(
     polish: bool,
     penalty_weight: float = 1000.0,
     warm_start: bool = False,
+    time_limit_sec: float = 10.0,
 ) -> Solution:
     problem = RoutingProblem(graph, request)  # validates reachability up front
 
@@ -46,8 +48,11 @@ def solve(
         raw = GeneticAlgorithm(graph, request, population_size=n_particles, n_generations=n_iterations, penalty_weight=penalty_weight, warm_start=warm_start, seed=seed).run()
     elif algorithm == "nearest_neighbor":
         raw = nearest_neighbor(graph, request)
+    elif algorithm == "route_search":
+        # a search over whole route sets that starts from nearest neighbour: it is its own polish, and it uses no swarm
+        raw = solve_with_search(problem, penalty_weight=penalty_weight, time_limit_sec=time_limit_sec, seed=seed)
     else:
         raise ValueError(f"unknown algorithm {algorithm!r}")
 
-    final = polish_result(problem, raw, penalty_weight, inter_route=True) if polish else raw
+    final = polish_result(problem, raw, penalty_weight, inter_route=True) if polish and algorithm != "route_search" else raw
     return Solution(problem=problem, raw=raw, final=final)

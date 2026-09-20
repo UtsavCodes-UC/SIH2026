@@ -117,10 +117,26 @@ export default function App() {
 
   const ready = graph !== null && depot !== null && stops.length > 0;
 
+  // the route search runs for up to its time limit, so say so instead of a bare "Optimizing…"
+  const busyLabel = (kind: Exclude<Busy, null>) =>
+    params.algorithm === "route_search" && kind === "optimize"
+      ? `Route search running (up to ${params.timeLimit} s)…`
+      : params.algorithm === "route_search" && kind === "benchmark"
+        ? `Benchmarking every algorithm, including the route search (up to ${params.timeLimit} s)…`
+        : BUSY_LABEL[kind];
+
   async function doOptimize() {
     if (!ready) return;
     const out = await run("optimize", () =>
-      optimize({ ...problemBody(), algorithm: params.algorithm, n_particles: params.nParticles, n_iterations: params.nIterations, polish: params.polish, warm_start: params.warmStart }),
+      optimize({
+        ...problemBody(),
+        algorithm: params.algorithm,
+        n_particles: params.nParticles,
+        n_iterations: params.nIterations,
+        polish: params.polish,
+        warm_start: params.warmStart,
+        time_limit_sec: params.timeLimit,
+      }),
     );
     if (out) {
       setResult(out);
@@ -132,7 +148,15 @@ export default function App() {
   async function doBenchmark() {
     if (!ready) return;
     const out = await run("benchmark", () =>
-      runBenchmark({ ...problemBody(), n_particles: params.nParticles, n_iterations: params.nIterations, polish: params.polish, warm_start: params.warmStart }),
+      runBenchmark({
+        ...problemBody(),
+        n_particles: params.nParticles,
+        n_iterations: params.nIterations,
+        polish: params.polish,
+        warm_start: params.warmStart,
+        include_route_search: params.algorithm === "route_search",
+        time_limit_sec: params.timeLimit,
+      }),
     );
     if (out) {
       setBenchmark(out);
@@ -222,11 +246,11 @@ export default function App() {
               onSelectMode={setSelectMode}
             />
           ) : (
-            <div className="placeholder">{busy ? BUSY_LABEL[busy] : error ?? "No network loaded."}</div>
+            <div className="placeholder">{busy ? busyLabel(busy) : error ?? "No network loaded."}</div>
           )}
           {busy && graph && (
             <div className="banner busy" role="status">
-              <span className="spinner" aria-hidden /> {BUSY_LABEL[busy]}
+              <span className="spinner" aria-hidden /> {busyLabel(busy)}
             </div>
           )}
           {notice && (

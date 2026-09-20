@@ -240,11 +240,65 @@ def test_optimize_is_deterministic_for_a_seed_and_echoes_the_resolved_problem():
     assert rerun["cost"] == first["cost"]
 
 
-@pytest.mark.parametrize("algorithm", ["qpso", "pso", "ga", "nearest_neighbor"])
+@pytest.mark.parametrize("algorithm", ["qpso", "pso", "ga", "nearest_neighbor", "route_search"])
 def test_every_algorithm_solves_a_problem(algorithm):
     graph_id = make_graph()["summary"]["graph_id"]
-    out = solve(graph_id, n_stops=8, algorithm=algorithm)
+    out = solve(graph_id, n_stops=8, algorithm=algorithm, time_limit_sec=2)
     assert out["algorithm"] == algorithm and out["total_time_min"] > 0
+
+
+def test_the_default_solver_is_still_qpso_with_warm_start_and_polish():
+    """The route search is an option; a request that names no algorithm gets what it always got."""
+    graph_id = make_graph()["summary"]["graph_id"]
+    out = solve(graph_id, n_stops=8)
+    assert out["algorithm"] == "qpso" and out["warm_start"] and out["polished"]
+
+
+def test_route_search_returns_a_valid_plan_and_reports_itself_honestly():
+    graph_id = make_graph()["summary"]["graph_id"]
+
+    out = solve(graph_id, n_stops=14, algorithm="route_search", time_limit_sec=2)
+    problem = out["problem"]
+
+    assert problem["n_vehicles"] >= 2
+    assert sorted(n for r in out["routes"] for n in r["nodes"] if n != problem["depot"]) == sorted(problem["stops"])
+    assert len(out["routes"]) <= problem["n_vehicles"]
+    assert out["feasible"] and out["capacity_violation"] == 0 and out["warnings"] == []
+    assert out["total_time_min"] == pytest.approx(sum(r["time_min"] for r in out["routes"]))
+    # it is its own polish and uses no swarm, and says so
+    assert out["polished"] is False and out["warm_start"] is False and out["cost"] == out["raw_cost"]
+    assert out["cost"] == pytest.approx(out["total_time_min"])  # nothing overloaded, so cost is pure travel time
+    assert out["iterations"] >= 1 and out["runtime_sec"] > 0
+    history = out["convergence"]
+    assert history[-1] == pytest.approx(out["cost"]) and all(b <= a + 1e-9 for a, b in zip(history, history[1:]))
+
+
+def test_route_search_is_never_worse_than_nearest_neighbour_on_the_same_problem():
+    graph_id = make_graph()["summary"]["graph_id"]
+    baseline = solve(graph_id, n_stops=20, algorithm="nearest_neighbor")
+    problem = baseline["problem"]
+    same = dict(depot=problem["depot"], stops=problem["stops"], demands=problem["demands"], n_vehicles=problem["n_vehicles"])
+
+    searched = solve(graph_id, algorithm="route_search", time_limit_sec=2, **same)
+
+    assert searched["cost"] < baseline["cost"]
+
+
+def test_route_search_on_one_vehicle_works_and_says_it_is_not_built_for_that():
+    graph_id = make_graph()["summary"]["graph_id"]
+
+    out = solve(graph_id, n_stops=8, n_vehicles=1, vehicle_capacity=1000, algorithm="route_search", time_limit_sec=2)
+
+    assert len(out["routes"]) == 1 and sorted(out["routes"][0]["nodes"][1:-1]) == sorted(out["problem"]["stops"])
+    assert len(out["warnings"]) == 1 and "several vehicles" in out["warnings"][0]
+
+
+def test_route_search_time_limit_is_validated():
+    graph_id = make_graph()["summary"]["graph_id"]
+    post = lambda **body: client.post("/api/optimize", json={"graph_id": graph_id, "algorithm": "route_search", "n_stops": 6, **body})  # noqa: E731
+    assert post(time_limit_sec=0).status_code == 422
+    assert post(time_limit_sec=61).status_code == 422
+    assert post(time_limit_sec=1).status_code == 200
 
 
 def test_polish_can_be_switched_off():
@@ -337,6 +391,36 @@ def test_infeasible_by_construction_problems_are_flagged():
     assert optimized["feasible"] is False and optimized["capacity_violation"] > 0
     assert all(a["capacity_violation"] > 0 for a in benchmark["algorithms"])
     assert solve(graph_id, n_stops=8)["warnings"] == []  # the auto-sized fleet is never flagged
+
+
+def test_benchmark_leaves_the_route_search_out_unless_asked():
+    graph_id = make_graph()["summary"]["graph_id"]
+    body = client.post("/api/benchmark", json={"graph_id": graph_id, "n_stops": 10, **FAST}).json()
+    assert "route_search" not in {a["name"] for a in body["algorithms"]}
+
+
+def test_benchmark_can_include_the_route_search():
+    graph_id = make_graph()["summary"]["graph_id"]
+
+    body = client.post("/api/benchmark", json={"graph_id": graph_id, "n_stops": 10, "include_route_search": True, "time_limit_sec": 2, **FAST}).json()
+
+    assert {a["name"] for a in body["algorithms"]} == {"nearest_neighbor", "classical_pso", "genetic_algorithm", "qpso", "route_search"}
+    row = next(a for a in body["algorithms"] if a["name"] == "route_search")
+    assert row["polished_cost"] is None and row["polished_gap_pct"] is None and row["iterations"] >= 1
+    assert row["raw_cost"] == pytest.approx(row["time_min"] + 1000.0 * row["capacity_violation"])
+    assert row["convergence"][-1] == pytest.approx(row["raw_cost"])
+
+
+def test_benchmark_route_search_gap_to_the_exact_optimum_on_one_vehicle():
+    graph_id = make_graph()["summary"]["graph_id"]
+
+    body = client.post(
+        "/api/benchmark", json={"graph_id": graph_id, "n_stops": 6, "n_vehicles": 1, "include_route_search": True, "time_limit_sec": 2, **FAST}
+    ).json()
+
+    row = next(a for a in body["algorithms"] if a["name"] == "route_search")
+    assert row["raw_gap_pct"] >= -1e-6  # nothing beats the exact optimum
+    assert row["raw_gap_pct"] == pytest.approx(100 * (row["raw_cost"] - body["exact_cost"]) / body["exact_cost"])
 
 
 def test_benchmark_multi_vehicle_has_no_exact_baseline():

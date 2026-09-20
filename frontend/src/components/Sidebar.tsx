@@ -29,7 +29,7 @@ interface Props {
   onSaveSnapshot: () => void;
 }
 
-const ALGORITHMS: Algorithm[] = ["qpso", "pso", "ga", "nearest_neighbor"];
+const ALGORITHMS: Algorithm[] = ["qpso", "pso", "ga", "nearest_neighbor", "route_search"];
 
 function numberInput(value: number, onChange: (n: number) => void, min: number, max: number, step = 1) {
   return (
@@ -56,6 +56,7 @@ export default function Sidebar(props: Props) {
   const [customPlace, setCustomPlace] = useState("");
   const [chosen, setChosen] = useState<PlaceSuggestion | null>(null); // the suggestion the box text still stands for
   const idle = busy === null;
+  const routeSearch = params.algorithm === "route_search";
   const isCity = graph?.summary.source === "city";
   const trafficKind = graph?.summary.traffic.kind;
   const canSave = trafficKind === "live" || trafficKind === "recorded";
@@ -210,28 +211,56 @@ export default function Sidebar(props: Props) {
             ))}
           </select>
         </label>
-        <div className="grid-2">
-          <label>Particles{numberInput(params.nParticles, (n) => onParams({ nParticles: n }), 5, 200, 5)}</label>
-          <label>Iterations{numberInput(params.nIterations, (n) => onParams({ nIterations: n }), 10, 3000, 50)}</label>
-          <label>Seed{numberInput(params.seed, (n) => onParams({ seed: n }), 0, 9999)}</label>
-        </div>
-        <label className="check" title="Start the search with a nearest-neighbour route in its population. A random start cannot find good routes for 50+ stops; without this a large problem comes out far worse than a simple heuristic.">
-          <input type="checkbox" checked={params.warmStart} onChange={(e) => onParams({ warmStart: e.target.checked })} />Warm start from a good route
-        </label>
-        <label className="check" title="After the search: fix crossing roads inside each route (2-opt), then move stops from one van to another whenever that saves time.">
-          <input type="checkbox" checked={params.polish} onChange={(e) => onParams({ polish: e.target.checked })} />Polish routes (2-opt + move stops between vans)
-        </label>
-        {params.warmStart && stops.length > 0 && stops.length <= 20 && (
-          <p className="hint">Tip: with few stops, turn warm start off to see the algorithms compete from scratch (that is where QPSO's edge shows).</p>
+        {routeSearch ? (
+          <>
+            <div className="grid-2">
+              <label title="How long the search may keep improving the routes. A small problem that stops improving finishes sooner.">
+                Time limit (s){numberInput(params.timeLimit, (n) => onParams({ timeLimit: n }), 1, 60, 1)}
+              </label>
+              <label>Seed{numberInput(params.seed, (n) => onParams({ seed: n }), 0, 9999)}</label>
+            </div>
+            <p className="hint">
+              Starts from a nearest-neighbour plan, then keeps moving, swapping and re-inserting stops between vans until the time limit. It uses no swarm and
+              no separate polish. In our tests on synthetic road networks it found cheaper plans than QPSO with the polish at 15 to 100 stops
+              (docs/BENCHMARKS.md, Finding 15). Built for several vans; with one van it is slow.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="grid-2">
+              <label>Particles{numberInput(params.nParticles, (n) => onParams({ nParticles: n }), 5, 200, 5)}</label>
+              <label>Iterations{numberInput(params.nIterations, (n) => onParams({ nIterations: n }), 10, 3000, 50)}</label>
+              <label>Seed{numberInput(params.seed, (n) => onParams({ seed: n }), 0, 9999)}</label>
+            </div>
+            <label className="check" title="Start the search with a nearest-neighbour route in its population. A random start cannot find good routes for 50+ stops; without this a large problem comes out far worse than a simple heuristic.">
+              <input type="checkbox" checked={params.warmStart} onChange={(e) => onParams({ warmStart: e.target.checked })} />Warm start from a good route
+            </label>
+            <label className="check" title="After the search: fix crossing roads inside each route (2-opt), then move stops from one van to another whenever that saves time.">
+              <input type="checkbox" checked={params.polish} onChange={(e) => onParams({ polish: e.target.checked })} />Polish routes (2-opt + move stops between vans)
+            </label>
+            {params.warmStart && stops.length > 0 && stops.length <= 20 && (
+              <p className="hint">Tip: with few stops, turn warm start off to see the algorithms compete from scratch (that is where QPSO's edge shows).</p>
+            )}
+          </>
         )}
         <div className="row">
           <button className="btn grow" disabled={!idle || !ready} onClick={props.onOptimize}>
             {busy === "optimize" ? "Optimizing…" : "Optimize routes"}
           </button>
-          <button className="btn btn-secondary" disabled={!idle || !ready} onClick={props.onBenchmark} title="Run every algorithm on this problem and compare">
+          <button
+            className="btn btn-secondary"
+            disabled={!idle || !ready}
+            onClick={props.onBenchmark}
+            title={routeSearch ? "Run every algorithm on this problem, including the route search, and compare" : "Run every algorithm on this problem and compare"}
+          >
             {busy === "benchmark" ? "Running…" : "Benchmark"}
           </button>
         </div>
+        <p className="hint">
+          {routeSearch
+            ? `Benchmark also runs the route search (up to ${params.timeLimit} s) next to QPSO, PSO, GA and nearest neighbour.`
+            : "Benchmark compares QPSO, PSO, GA and nearest neighbour; choose Route search in the list to add it."}
+        </p>
       </section>
 
       <section>

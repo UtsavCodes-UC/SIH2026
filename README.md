@@ -65,6 +65,13 @@ cd backend && python scripts/warm_city_cache.py
    by default: *Warm start* (the search begins with a nearest-neighbour route in its population; needed
    from about 50 stops, and switch it off to watch the algorithms compete from scratch) and *Polish
    routes* (2-opt inside each route, then moving stops between vans). Up to 150 stops.
+
+   **Route search** is an extra option in the list; the default stays QPSO with warm start and polish.
+   It starts from a nearest-neighbour plan and keeps moving, swapping and re-inserting stops between vans
+   until its time limit (10 s by default; a small problem that stops improving finishes sooner). It uses no
+   swarm and has no separate polish. It is built for several vans (with one van it is slow and says so), and
+   *Benchmark* adds it to the comparison when it is the selected algorithm. Its evidence is in
+   docs/BENCHMARKS.md, Findings 13-15.
 4. **Traffic** — free flow / random / rush hour repaints the roads and (optionally) re-plans
    automatically, so you can watch routes detour around a jam. On a real city, *Fetch live traffic*
    loads real TomTom readings instead (see below). A badge on the map and on every result always says
@@ -125,8 +132,8 @@ Interactive docs at http://localhost:8000/docs.
 | `POST /api/graph/{id}/congestion` | `random` / `rush_hour` / `clear` (simulated), `live` (TomTom, real cities), `snapshot` (replay a recording): the dynamic weight update |
 | `GET /api/traffic/status` | whether a TomTom key is configured (never returns the key) |
 | `GET` · `POST /api/graph/{id}/traffic/snapshots` | list recorded traffic for a map · record the current real traffic |
-| `POST /api/optimize` | solve one problem; routes come back as polylines along the roads |
-| `POST /api/benchmark` | run every algorithm on one problem (raw and 2-opt-polished costs) |
+| `POST /api/optimize` | solve one problem; routes come back as polylines along the roads. `algorithm` is `qpso` (default), `pso`, `ga`, `nearest_neighbor` or `route_search`; the last takes `time_limit_sec` (1-60, default 10) and ignores the swarm settings and `polish` |
+| `POST /api/benchmark` | run every algorithm on one problem (raw and 2-opt-polished costs); `include_route_search: true` adds the route search (with `time_limit_sec`) |
 
 Anything left out of a problem (depot, stops, demands, fleet size) is filled in from `seed` and
 echoed back in the response, so the same problem can be re-solved after the traffic changes.
@@ -139,7 +146,7 @@ backend/
   app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions, CVRPLIB benchmark adapter
   app/services/    graph store, problem builder, solver dispatch, map/route views, live traffic, snapshots
   app/api/         FastAPI routers          app/schemas/   request/response models
-  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, ...), check_tomtom.py, warm_city_cache.py
+  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, ...), check_tomtom.py, warm_city_cache.py
   tests/           pytest suite (run from backend/: python -m pytest tests/)
   results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
 frontend/          React + TypeScript + Leaflet + Recharts map UI
@@ -151,7 +158,8 @@ docs/              BENCHMARKS.md (results and caveats)
 Day 1 (engine, baselines, benchmarking), Day 2 (multi-vehicle capacity model, REST API, OSM loader,
 map UI, live TomTom traffic with recorded snapshots) and the first part of Day 3 (scaling to 100
 customers: warm start, a size-aware QPSO jump, a polish that moves stops between vans) are done.
-The hybrid engine, the optimal split decoder and the stronger route search (Findings 11-13) are
-built and benchmarked but not yet wired into the API or the UI.
+The stronger route search (Findings 13-15) is available in the API and the UI as an option, with the
+QPSO pipeline still the default. The hybrid engine and the optimal split decoder (Findings 11-12) are
+built and benchmarked but not wired into the API or the UI.
 Still open for Day 3: the mathematical-formulation write-up, "block a road" what-if events, a
 time / distance / fuel cost model, Docker packaging and the demo script.

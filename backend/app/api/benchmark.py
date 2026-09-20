@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.graph import lookup
 from app.core.benchmark import BenchmarkConfig, run_benchmark
+from app.core.route_search import solve_with_search
 from app.core.vrp_formulation import RoutingProblem, split_at_depot
 from app.schemas.solve import BenchmarkAlgorithmOut, BenchmarkRequest, BenchmarkResponse
 from app.services.graph_store import GraphStore, get_store
@@ -49,6 +50,25 @@ def benchmark(req: BenchmarkRequest, store: GraphStore = Depends(get_store)) -> 
                     runtime_sec=algo.raw_result.runtime_sec,
                     iterations=algo.raw_result.iterations,
                     convergence=algo.raw_result.convergence_history,
+                )
+            )
+
+        if req.include_route_search:
+            result = solve_with_search(routing_problem, time_limit_sec=req.time_limit_sec, seed=req.seed)
+            evaluation = routing_problem.evaluate_routes(split_at_depot(result.best_route, request.depot))
+            gap = 100.0 * (result.best_cost - report.exact_cost) / report.exact_cost if report.exact_cost else None
+            algorithms.append(
+                BenchmarkAlgorithmOut(
+                    name="route_search",
+                    raw_cost=result.best_cost,
+                    time_min=evaluation.total_time_min,
+                    capacity_violation=evaluation.capacity_violation,
+                    polished_cost=None,  # the search is its own polish
+                    raw_gap_pct=gap,
+                    polished_gap_pct=None,
+                    runtime_sec=result.runtime_sec,
+                    iterations=result.iterations,
+                    convergence=result.convergence_history,
                 )
             )
 

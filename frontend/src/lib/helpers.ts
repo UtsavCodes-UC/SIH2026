@@ -12,6 +12,7 @@ export const ALGORITHM_LABELS: Record<string, string> = {
   ga: "Genetic algorithm",
   genetic_algorithm: "Genetic algorithm",
   nearest_neighbor: "Nearest neighbour",
+  route_search: "Route search",
   held_karp_exact: "Exact (Held-Karp)",
 };
 
@@ -20,6 +21,7 @@ export const ALGORITHM_COLORS: Record<string, string> = {
   classical_pso: "#2e6f95",
   genetic_algorithm: "#3c8d5a",
   nearest_neighbor: "#8a8f98",
+  route_search: "#7a3e9d",
   held_karp_exact: "#1b1b1e",
 };
 

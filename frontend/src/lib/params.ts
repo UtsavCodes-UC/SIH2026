@@ -8,9 +8,11 @@ export interface SolverParams {
   nIterations: number;
   polish: boolean;
   warmStart: boolean;
+  timeLimit: number; // seconds; route search only
   seed: number;
 }
 
+// The default solver is QPSO with a warm start and the polish. The route search is an option, not the default.
 export const DEFAULT_PARAMS: SolverParams = {
   algorithm: "qpso",
   nVehicles: null,
@@ -19,6 +21,7 @@ export const DEFAULT_PARAMS: SolverParams = {
   nIterations: 800,
   polish: true,
   warmStart: true,
+  timeLimit: 10,
   seed: 1,
 };
 

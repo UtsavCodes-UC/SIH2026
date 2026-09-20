@@ -50,6 +50,12 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
           <span>{ALGORITHM_LABELS[result.algorithm]} solve time</span>
           <strong>{fmt(result.runtime_sec, 2)} s</strong>
         </div>
+        {result.algorithm === "route_search" && (
+          <div className="kpi" title="Rounds of removing a few nearby stops and putting them back in the best places">
+            <span>Search iterations</span>
+            <strong>{result.iterations.toLocaleString()}</strong>
+          </div>
+        )}
         {gain !== null && (
           <div className="kpi">
             <span>Polish saved</span>
@@ -103,7 +109,12 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
           ) : (
             <p className="empty">{ALGORITHM_LABELS[result.algorithm]} builds its answer in one pass, so there is no convergence curve.</p>
           )}
-          <p className="hint">Cost = travel time in minutes plus a heavy penalty for any capacity overload. The curve is the algorithm's own result, before the polish{result.warm_start ? "; it starts from a nearest-neighbour route, so it begins low" : ""}.</p>
+          <p className="hint">
+            Cost = travel time in minutes plus a heavy penalty for any capacity overload.{" "}
+            {result.algorithm === "route_search"
+              ? "The curve starts at the nearest-neighbour plan, drops when the local search runs, then falls as the iterated search finds better plans. There is no separate polish."
+              : `The curve is the algorithm's own result, before the polish${result.warm_start ? "; it starts from a nearest-neighbour route, so it begins low" : ""}.`}
+          </p>
         </div>
       </div>
     </div>

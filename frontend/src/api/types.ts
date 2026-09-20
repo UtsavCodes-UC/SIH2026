@@ -69,7 +69,7 @@ export interface PlaceSearchResult {
   note: string | null; // set when the online list is missing
 }
 
-export type Algorithm = "qpso" | "pso" | "ga" | "nearest_neighbor";
+export type Algorithm = "qpso" | "pso" | "ga" | "nearest_neighbor" | "route_search";
 export type CongestionMode = "random" | "rush_hour" | "clear" | "live" | "snapshot";
 
 export interface ProblemSpec {
@@ -89,6 +89,7 @@ export interface OptimizeRequest extends ProblemSpec {
   n_iterations: number;
   polish: boolean;
   warm_start: boolean;
+  time_limit_sec: number; // route search only: how long the iterated search may run
 }
 
 export interface BenchmarkRequest extends ProblemSpec {
@@ -96,6 +97,8 @@ export interface BenchmarkRequest extends ProblemSpec {
   n_iterations: number;
   polish: boolean;
   warm_start: boolean;
+  include_route_search: boolean; // add the route search to the comparison
+  time_limit_sec: number;
 }
 
 export interface RouteOut {

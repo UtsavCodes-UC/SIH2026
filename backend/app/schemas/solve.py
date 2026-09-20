@@ -6,7 +6,12 @@ from pydantic import BaseModel, Field
 
 from app.schemas.graph import TrafficInfo
 
-Algorithm = Literal["qpso", "pso", "ga", "nearest_neighbor"]
+Algorithm = Literal["qpso", "pso", "ga", "nearest_neighbor", "route_search"]
+
+TIME_LIMIT_DESCRIPTION = (
+    "route search only: how long the iterated search may run, in seconds (it stops sooner on a small problem "
+    "that has stopped improving). Ignored by the other algorithms"
+)
 
 
 class ProblemSpec(BaseModel):
@@ -34,6 +39,7 @@ class OptimizeRequest(ProblemSpec):
         description="PSO, GA and QPSO begin with the nearest-neighbour solution in their population. Essential from "
         "about 50 stops, where a random start loses to nearest neighbour itself; turn it off to compare the algorithms from scratch",
     )
+    time_limit_sec: float = Field(10.0, ge=1, le=60, description=TIME_LIMIT_DESCRIPTION)
 
 
 class BenchmarkRequest(ProblemSpec):
@@ -41,6 +47,8 @@ class BenchmarkRequest(ProblemSpec):
     n_iterations: int = Field(800, ge=10, le=3000)
     polish: bool = True
     warm_start: bool = Field(True, description="every metaheuristic starts from the same nearest-neighbour seed (fair; differences shrink)")
+    include_route_search: bool = Field(False, description="also run the route search (nearest neighbour, local search between vehicles, iterated search) and add it to the comparison")
+    time_limit_sec: float = Field(10.0, ge=1, le=60, description=TIME_LIMIT_DESCRIPTION)
 
 
 class RouteOut(BaseModel):

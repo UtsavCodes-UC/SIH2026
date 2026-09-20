@@ -22,13 +22,18 @@ def optimize(req: OptimizeRequest, store: GraphStore = Depends(get_store)) -> Op
         request = resolve_problem(stored, req)
         solution = solve(
             stored.graph, request, req.algorithm, req.n_particles, req.n_iterations, req.seed, req.polish,
-            warm_start=req.warm_start,
+            warm_start=req.warm_start, time_limit_sec=req.time_limit_sec,
         )
         routes = split_at_depot(solution.final.best_route, request.depot)
         evaluation = solution.problem.evaluate_routes(routes)
         outputs = route_outputs(stored, solution.problem, routes)
         problem = resolved_problem(solution.problem)
         warnings = problem_warnings(solution.problem)
+        if req.algorithm == "route_search" and request.n_vehicles == 1:
+            warnings.append(
+                "Route search is built for several vehicles. With one vehicle every move touches the whole route, so each "
+                "iteration is much slower and the time limit buys fewer improvements."
+            )
         traffic = stored.traffic
 
     return OptimizeResponse(
@@ -43,7 +48,7 @@ def optimize(req: OptimizeRequest, store: GraphStore = Depends(get_store)) -> Op
         raw_cost=solution.raw.best_cost,
         cost=solution.final.best_cost,
         polished=solution.polished,
-        warm_start=req.warm_start and req.algorithm != "nearest_neighbor",
+        warm_start=req.warm_start and req.algorithm not in ("nearest_neighbor", "route_search"),
         convergence=solution.raw.convergence_history,
         runtime_sec=solution.final.runtime_sec,
         iterations=solution.raw.iterations,
