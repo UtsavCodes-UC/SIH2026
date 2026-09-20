@@ -55,6 +55,9 @@ function compare(subject: string, beforeMin: number, beforeKm: number, afterMin:
 }
 
 export default function App() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(340);
+  const [isResizing, setIsResizing] = useState(false);
   const [graph, setGraph] = useState<GraphView | null>(null);
   const [presets, setPresets] = useState<Preset[]>([]);
   const [depot, setDepot] = useState<number | null>(null);
@@ -353,9 +356,27 @@ export default function App() {
   window.addEventListener("mouseup", onUp);
 }
 
+  function toggleSidebar() {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
+      setTimeout(() => window.dispatchEvent(new Event("resize")), 220);
+      return next;
+    });
+  }
+
   return (
-    <div className="app">
+    <div
+      className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "is-resizing" : ""}`}
+      style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
+    >
       <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={toggleSidebar}
+        sidebarWidth={sidebarWidth}
+        onResizeWidth={setSidebarWidth}
+        isResizing={isResizing}
+        onResizeActive={setIsResizing}
         graph={graph}
         presets={presets}
         busy={busy}

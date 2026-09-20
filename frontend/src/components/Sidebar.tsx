@@ -1,10 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Algorithm, CongestionMode, GraphView, PathAlgorithm, PlaceSuggestion, Preset, SnapshotInfo, TrafficStatus } from "../api/types";
 import { ALGORITHM_LABELS, PATH_LABELS, formatCaptured } from "../lib/helpers";
 import type { Busy, SolverParams } from "../lib/params";
 import PlaceSearchBox from "./PlaceSearchBox";
+import AboutPanel from "./AboutPanel";
 
 interface Props {
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+  sidebarWidth?: number;
+  onResizeWidth?: (width: number) => void;
+  isResizing?: boolean;
+  onResizeActive?: (active: boolean) => void;
   graph: GraphView | null;
   presets: Preset[];
   busy: Busy;
@@ -70,6 +77,7 @@ function numberInput(value: number, onChange: (n: number) => void, min: number, 
 
 export default function Sidebar(props: Props) {
   const { graph, presets, busy, depot, stops, params, onParams } = props;
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [source, setSource] = useState<"synthetic" | "city">("synthetic");
   const [syn, setSyn] = useState({ n_nodes: 80, area_size_km: 8, seed: 1 });
   const [presetIndex, setPresetIndex] = useState(0);
@@ -90,6 +98,29 @@ export default function Sidebar(props: Props) {
   const typed = customPlace.trim();
   const canLoad = idle && (searching ? typed.length >= 2 : presets.length > 0);
 
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const collapsed = props.collapsed ?? internalCollapsed;
+  const toggleCollapsed = () => {
+    if (props.onToggleCollapsed) {
+      props.onToggleCollapsed();
+    } else {
+      setInternalCollapsed((c) => !c);
+      setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
+    }
+  };
+
+  function handleSectionClick(sectionId: string) {
+    if (collapsed) {
+      toggleCollapsed();
+      setTimeout(() => {
+        const el = document.getElementById(sectionId);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
+    }
+  }
+
   function loadCity() {
     if (!canLoad) return;
     if (searching && chosen && chosen.label === typed) {
@@ -102,15 +133,158 @@ export default function Sidebar(props: Props) {
     }
   }
 
+  const resizingRef = useRef(false);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || collapsed) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    resizingRef.current = true;
+    props.onResizeActive?.(true);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizingRef.current) return;
+    e.preventDefault();
+    const maxAllowed = Math.min(520, Math.max(320, window.innerWidth - 200));
+    const nextWidth = Math.min(maxAllowed, Math.max(320, e.clientX));
+    props.onResizeWidth?.(nextWidth);
+    window.dispatchEvent(new Event("resize"));
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizingRef.current) return;
+    resizingRef.current = false;
+    props.onResizeActive?.(false);
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // safe ignore
+    }
+    window.dispatchEvent(new Event("resize"));
+  };
+
+  const handleDoubleClick = () => {
+    if (collapsed) return;
+    props.onResizeWidth?.(340);
+    window.dispatchEvent(new Event("resize"));
+  };
+
+  useEffect(() => {
+    if (!props.isResizing) return;
+    const onWindowPointerUp = () => {
+      if (resizingRef.current) {
+        resizingRef.current = false;
+        props.onResizeActive?.(false);
+        window.dispatchEvent(new Event("resize"));
+      }
+    };
+    window.addEventListener("pointerup", onWindowPointerUp);
+    window.addEventListener("pointercancel", onWindowPointerUp);
+    return () => {
+      window.removeEventListener("pointerup", onWindowPointerUp);
+      window.removeEventListener("pointercancel", onWindowPointerUp);
+    };
+  }, [props.isResizing, props.onResizeActive]);
+
   return (
     <aside className="sidebar">
-      <header className="brand">
-        <h1>Quantum-inspired route optimizer</h1>
-        <p>SIH26137 · QPSO for traffic-aware vehicle routing</p>
-      </header>
+      <div className="sidebar-sticky-header">
+        <header className="brand">
+          <div className="brand-title-row">
+            <button
+              type="button"
+              className="sidebar-toggle-btn"
+              onClick={toggleCollapsed}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {collapsed ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="18" height="18" x="3" y="3" rx="2" />
+                  <path d="M9 3v18" />
+                  <path d="m13 15 3-3-3-3" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="18" height="18" x="3" y="3" rx="2" />
+                  <path d="M9 3v18" />
+                  <path d="m14 9-3 3 3 3" />
+                </svg>
+              )}
+            </button>
+            <h1>Quantum-inspired route optimizer</h1>
+          </div>
+        </header>
 
-      <section>
-        <h2>1 · Road network</h2>
+        <button className="about-bar" onClick={() => setAboutOpen((open) => !open)}>
+          <span className="about-bar-icon">ⓘ</span>
+          <span className="about-bar-label">About</span>
+          <span className="about-bar-chevron">›</span>
+        </button>
+      </div>
+
+      {aboutOpen && <AboutPanel onClose={() => setAboutOpen(false)} />}
+
+      <nav className="sidebar-collapsed-nav" aria-label="Collapsed navigation">
+        <button
+          type="button"
+          className="rail-item"
+          onClick={() => setAboutOpen((open) => !open)}
+          title="About"
+          aria-label="About"
+        >
+          <span className="rail-icon">ⓘ</span>
+        </button>
+        <button
+          type="button"
+          className="rail-item"
+          onClick={() => handleSectionClick("section-road-network")}
+          title="Road Network"
+          aria-label="Road Network"
+        >
+          <span className="rail-icon">◉</span>
+        </button>
+        <button
+          type="button"
+          className="rail-item"
+          onClick={() => handleSectionClick("section-delivery-problem")}
+          title="Delivery Problem"
+          aria-label="Delivery Problem"
+        >
+          <span className="rail-icon">◇</span>
+        </button>
+        <button
+          type="button"
+          className="rail-item"
+          onClick={() => handleSectionClick("section-solver")}
+          title="Solver"
+          aria-label="Solver"
+        >
+          <span className="rail-icon">⚙</span>
+        </button>
+        <button
+          type="button"
+          className="rail-item"
+          onClick={() => handleSectionClick("section-traffic")}
+          title="Traffic"
+          aria-label="Traffic"
+        >
+          <span className="rail-icon">≋</span>
+        </button>
+        <button
+          type="button"
+          className="rail-item"
+          onClick={() => handleSectionClick("section-shortest-path")}
+          title="Shortest Path"
+          aria-label="Shortest Path"
+        >
+          <span className="rail-icon">↗</span>
+        </button>
+      </nav>
+
+      <section id="section-road-network">
+        <h2><span className="section-num">01</span> · Road network</h2>
         <div className="tabs" role="tablist">
           {(["synthetic", "city"] as const).map((s) => (
             <button key={s} role="tab" aria-selected={source === s} className={source === s ? "tab tab-active" : "tab"} onClick={() => setSource(s)}>
@@ -189,8 +363,8 @@ export default function Sidebar(props: Props) {
         )}
       </section>
 
-      <section>
-        <h2>2 · Delivery problem</h2>
+      <section id="section-delivery-problem">
+        <h2><span className="section-num">02</span> · Delivery problem</h2>
         <p className="hint">
           Depot: <strong>{depot ?? "—"}</strong> · Stops: <strong>{stops.length}</strong>. Use the map toolbar to click a depot or stops, or draw a random set.
         </p>
@@ -241,8 +415,8 @@ export default function Sidebar(props: Props) {
         )}
       </section>
 
-      <section>
-        <h2>3 · Solver</h2>
+      <section id="section-solver">
+        <h2><span className="section-num">03</span> · Solver</h2>
         <h3 className="subhead">What to minimize</h3>
         <div className="grid-2 presets">
           {WEIGHT_PRESETS.map((p) => (
@@ -340,8 +514,8 @@ export default function Sidebar(props: Props) {
         </p>
       </section>
 
-      <section>
-        <h2>4 · Traffic</h2>
+      <section id="section-traffic">
+        <h2><span className="section-num">04</span> · Traffic</h2>
         <p className="hint">Simulated conditions, for any network:</p>
         <div className="row">
           {(
@@ -407,7 +581,7 @@ export default function Sidebar(props: Props) {
           routes avoid closed roads, and a banner shows what the closure cost.
         </p>
         <div className="row">
-          <span className="grow graph-info">
+          <span className="grow graph-info inline">
             Closed roads: <strong>{props.closedRoads}</strong>
           </span>
           <button className="btn btn-secondary" disabled={!idle || props.closedRoads === 0} onClick={props.onReopenAll}>
@@ -422,13 +596,13 @@ export default function Sidebar(props: Props) {
         )}
       </section>
 
-      <section>
-        <h2>5 · Shortest path</h2>
+      <section id="section-shortest-path">
+        <h2><span className="section-num">05</span> · Shortest path</h2>
         <p className="hint">
           The cheapest way between two places, for the same "What to minimize" as above. Press <strong>set A</strong> or <strong>set B</strong> on the
           map toolbar, then click the map.
         </p>
-        <p className="graph-info">
+        <p className="graph-info inline">
           A: <strong>{props.pathA ?? "—"}</strong> · B: <strong>{props.pathB ?? "—"}</strong>
         </p>
         <label>
@@ -462,6 +636,23 @@ export default function Sidebar(props: Props) {
         </div>
         <p className="hint">Dijkstra is exact and takes milliseconds. The other three search for the same route with particles, so they can end above the optimum.</p>
       </section>
+
+      {!collapsed && (
+        <div
+          className={`sidebar-resizer ${props.isResizing ? "is-dragging" : ""}`}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onDoubleClick={handleDoubleClick}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar width"
+          title="Drag to resize sidebar width (double-click to reset)"
+        >
+          <div className="sidebar-resizer-grip" />
+        </div>
+      )}
     </aside>
   );
 }
