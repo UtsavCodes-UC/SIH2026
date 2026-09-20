@@ -51,6 +51,29 @@ Real cities download from OpenStreetMap on first use (1-2 minutes) and are cache
 cd backend && python scripts/warm_city_cache.py
 ```
 
+### With Docker
+
+One container serves the API and the built UI on one port; nothing else needs installing. From the repo root:
+
+```bash
+docker compose up --build
+```
+
+Open http://localhost:8000. If that port is taken (for example by a local `uvicorn`), pick another one:
+`PORT=8080 docker compose up --build` (PowerShell: `$env:PORT=8080; docker compose up --build`).
+
+- **After pulling new code** (UI or backend), rebuild and restart with `docker compose up -d --build`. The image is layered so
+  the dependency installs are cached: a UI-only change rebuilds in seconds, and only a change to `requirements.txt` or
+  `package-lock.json` reinstalls packages.
+- **Live traffic:** put `TOMTOM_API_KEY=...` in `backend/.env` (optional). The key is passed in when the container starts;
+  it is never copied into the image, and `.dockerignore` keeps `.env` out of the build.
+- **Maps and recorded traffic** stay on your disk: `backend/data/cache/` and `backend/data/traffic_snapshots/` are mounted
+  into the container, so they survive rebuilds and a demo prepared online (warmed cities, a saved snapshot) works offline.
+  On Linux, create the two folders first (`mkdir -p backend/data/cache backend/data/traffic_snapshots`) so they belong to you.
+- The container runs a single worker on purpose: loaded maps and their traffic live in that process's memory.
+- Tests inside the image: `docker compose run --rm app python -m pytest tests -q`.
+- Stop and remove it with `docker compose down`. For UI development keep using `npm run dev` as above.
+
 ## Using the UI
 
 1. **Road network** — generate a synthetic network, or load a real place: pick one of the four presets,
@@ -190,6 +213,8 @@ backend/
   results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
 frontend/          React + TypeScript + Leaflet + Recharts map UI
 docs/              MATH_FORMULATION.md (the problem, the cost, each algorithm), BENCHMARKS.md (results and caveats)
+Dockerfile         multi-stage image: builds the UI, then the backend that serves it
+docker-compose.yml one service, one port, maps and snapshots mounted from the host
 ```
 
 ## Status

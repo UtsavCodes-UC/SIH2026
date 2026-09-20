@@ -1,13 +1,25 @@
+# The whole app in one container: API + the built UI on one port.
+#
+#   docker compose up --build            open http://localhost:8000
+#   PORT=8080 docker compose up         use another host port (bash; in PowerShell: $env:PORT=8080)
+#   docker compose up -d --build        after pulling new code (UI or backend), rebuild and restart in the background
+#   docker compose down                 stop and remove the container (your maps and snapshots stay on disk)
+#
+# Live traffic: put TOMTOM_API_KEY=... in backend/.env (see backend/.env.example). The key is read when the container
+# starts and is never copied into the image.
+
 services:
-  backend:
-    build: ./backend
+  app:
+    build: .
+    image: sih26137-traffic-optimizer
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
+    env_file:
+      - path: ./backend/.env
+        required: false # the app runs without it; only live traffic needs the key
     volumes:
-      - ./backend:/app
-  frontend:
-    build: ./frontend
-    ports:
-      - "5173:5173"
-    depends_on:
-      - backend
+      # Downloaded OpenStreetMap maps and recorded traffic stay on the host, so they survive rebuilds and a demo
+      # that was prepared online still works offline. (On Linux create the folders first: mkdir -p backend/data/cache backend/data/traffic_snapshots)
+      - ./backend/data/cache:/app/backend/data/cache
+      - ./backend/data/traffic_snapshots:/app/backend/data/traffic_snapshots
+    restart: unless-stopped
