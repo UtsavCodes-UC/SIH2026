@@ -58,15 +58,25 @@ select {
 }
 
 .main {
-  display: grid;
-  grid-template-rows: minmax(300px, 1fr) minmax(220px, 38vh);
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+.main[data-panel="maximized"] .bottom {
+  flex: 1 1 auto;
+  height: auto !important;
+}
+
+.main[data-panel="maximized"] .map-area {
+  flex: 0 0 140px;
 }
 
 .map-area {
   position: relative;
   min-height: 0;
+  flex: 1 1 auto;
 }
 
 .bottom {
@@ -75,6 +85,8 @@ select {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex: 0 0 auto;
+  position: relative;
 }
 
 .bottom-scroll {
@@ -212,6 +224,7 @@ select {
 
 .tabs {
   display: flex;
+  align-items: center;
   gap: 2px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 10px;
@@ -235,6 +248,48 @@ select {
 .tab-active {
   color: var(--accent);
   border-bottom-color: var(--accent);
+}
+
+.panel-controls {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  padding-right: 4px;
+}
+
+.panel-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.panel-btn:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.panel-resize-handle {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+  z-index: 10;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle:active {
+  background: var(--accent-soft);
 }
 
 /* ---------- map ---------- */

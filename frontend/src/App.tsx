@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   createCityGraph,
   createSyntheticGraph,
@@ -53,6 +53,10 @@ export default function App() {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"results" | "benchmark">("results");
+  const [panelState, setPanelState] = useState<"minimized" | "default" | "maximized">("default");
+  const [panelHeight, setPanelHeight] = useState(320); // px, used when panelState === "default"
+  const [dragging, setDragging] = useState(false);
+  const bottomRef = useRef<HTMLElement | null>(null);
   const [trafficStatus, setTrafficStatus] = useState<TrafficStatus | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -203,6 +207,35 @@ export default function App() {
     invalidate();
   }
 
+  function startResize(e: ReactMouseEvent<HTMLDivElement>) {
+  e.preventDefault();
+  const el = bottomRef.current;
+  if (!el) return;
+
+  const startY = e.clientY;
+  const startHeight = el.getBoundingClientRect().height;
+  // grabbing the handle always drops into free-drag mode, even from minimized/maximized —
+  // same feel as dragging VS Code's collapsed terminal back open.
+  setPanelHeight(startHeight);
+  setPanelState("default");
+  setDragging(true);
+
+    const parentHeight = el.parentElement?.getBoundingClientRect().height ?? window.innerHeight;
+
+  function onMove(ev: MouseEvent) {
+    const delta = startY - ev.clientY; // dragging up = taller panel
+    const maxH = parentHeight - 160;
+    setPanelHeight(Math.min(Math.max(startHeight + delta, 100), Math.max(maxH, 160)));
+  }
+  function onUp() {
+    setDragging(false);
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", onUp);
+  }
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onUp);
+}
+
   return (
     <div className="app">
       <Sidebar
@@ -232,7 +265,7 @@ export default function App() {
         onSaveSnapshot={doSaveSnapshot}
       />
 
-      <main className="main">
+      <main className="main" data-panel={panelState}>
         <div className="map-area">
           {graph ? (
             <MapView
@@ -268,15 +301,51 @@ export default function App() {
           )}
         </div>
 
-        <section className="bottom">
+                        <section
+          className="bottom"
+          ref={bottomRef}
+          style={{
+            height: panelState === "maximized" ? undefined : panelState === "minimized" ? 42 : panelHeight,
+            transition: dragging ? "none" : "height 150ms ease",
+          }}
+        >
+          <div
+            className="panel-resize-handle"
+            onMouseDown={startResize}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize panel"
+          />
           <div className="tabs" role="tablist">
             {(["results", "benchmark"] as const).map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "tab tab-active" : "tab"} onClick={() => setTab(t)}>
                 {t === "results" ? "Route plan" : "Algorithm benchmark"}
               </button>
             ))}
+            <div className="panel-controls">
+              <button
+                type="button"
+                className="panel-btn"
+                title={panelState === "minimized" ? "Restore panel" : "Minimize panel"}
+                aria-label={panelState === "minimized" ? "Restore panel" : "Minimize panel"}
+                onClick={() => setPanelState((s) => (s === "minimized" ? "default" : "minimized"))}
+              >
+                {panelState === "minimized" ? "▢" : "—"}
+              </button>
+              <button
+                type="button"
+                className="panel-btn"
+                title={panelState === "maximized" ? "Restore panel" : "Maximize panel"}
+                aria-label={panelState === "maximized" ? "Restore panel" : "Maximize panel"}
+                onClick={() => setPanelState((s) => (s === "maximized" ? "default" : "maximized"))}
+              >
+                {panelState === "maximized" ? "❐" : "▢"}
+              </button>
+            </div>
           </div>
-          <div className="bottom-scroll">{tab === "results" ? <ResultsPanel result={result} /> : <BenchmarkPanel benchmark={benchmark} />}</div>
+          {panelState !== "minimized" && (
+            <div className="bottom-scroll">{tab === "results" ? <ResultsPanel result={result} /> : <BenchmarkPanel benchmark={benchmark} />}</div>
+          )}
         </section>
       </main>
     </div>
