@@ -1,0 +1,201 @@
+moves,instance_seed,cost,seconds
+older polish (improve_routes),500,3683.8237,0.274
+older polish (improve_routes),501,2492.9758,0.105
+older polish (improve_routes),502,3312.4061,0.088
+older polish (improve_routes),503,3177.6294,0.064
+older polish (improve_routes),504,2542.0773,0.114
+older polish (improve_routes),505,3433.3601,0.070
+older polish (improve_routes),506,2887.0558,0.125
+older polish (improve_routes),507,2638.0853,0.104
+older polish (improve_routes),508,2969.5085,0.102
+older polish (improve_routes),509,3214.4346,0.068
+older polish (improve_routes),510,2544.7349,0.067
+older polish (improve_routes),511,3382.1861,0.105
+older polish (improve_routes),512,3659.9234,0.148
+older polish (improve_routes),513,4206.8035,0.108
+older polish (improve_routes),514,2304.3363,0.106
+older polish (improve_routes),515,3594.5739,0.041
+older polish (improve_routes),516,3620.4111,0.168
+older polish (improve_routes),517,3742.7857,0.072
+older polish (improve_routes),518,3141.1223,0.178
+older polish (improve_routes),519,3476.6343,0.089
+relocate,500,4042.4632,0.016
+relocate,501,2638.1217,0.033
+relocate,502,3296.0812,0.029
+relocate,503,3219.7925,0.027
+relocate,504,2641.8762,0.021
+relocate,505,3559.9957,0.016
+relocate,506,2843.8445,0.027
+relocate,507,2612.6225,0.027
+relocate,508,3028.9438,0.032
+relocate,509,3276.4164,0.024
+relocate,510,2674.2958,0.016
+relocate,511,3570.3096,0.024
+relocate,512,3674.5676,0.026
+relocate,513,3954.5290,0.030
+relocate,514,2457.8364,0.028
+relocate,515,3614.1471,0.023
+relocate,516,3882.5910,0.018
+relocate,517,3616.0114,0.028
+relocate,518,3282.6433,0.021
+relocate,519,3340.2121,0.025
+relocate + swap,500,3947.1941,0.022
+relocate + swap,501,2709.1644,0.031
+relocate + swap,502,3268.3570,0.025
+relocate + swap,503,3154.8096,0.037
+relocate + swap,504,2611.0701,0.024
+relocate + swap,505,3550.9576,0.021
+relocate + swap,506,2815.6683,0.024
+relocate + swap,507,2625.2551,0.031
+relocate + swap,508,2997.2678,0.053
+relocate + swap,509,3139.0551,0.029
+relocate + swap,510,2685.0836,0.029
+relocate + swap,511,3515.3419,0.030
+relocate + swap,512,3641.8882,0.030
+relocate + swap,513,3933.6687,0.038
+relocate + swap,514,2445.2331,0.032
+relocate + swap,515,3587.7935,0.026
+relocate + swap,516,3749.5831,0.035
+relocate + swap,517,3530.4982,0.033
+relocate + swap,518,3233.3866,0.029
+relocate + swap,519,3203.0998,0.034
+relocate + swap + 2-opt,500,3921.1057,0.022
+relocate + swap + 2-opt,501,2548.9120,0.034
+relocate + swap + 2-opt,502,3246.6734,0.024
+relocate + swap + 2-opt,503,3279.7348,0.027
+relocate + swap + 2-opt,504,2555.9186,0.024
+relocate + swap + 2-opt,505,3448.8014,0.021
+relocate + swap + 2-opt,506,2769.6768,0.026
+relocate + swap + 2-opt,507,2619.1205,0.028
+relocate + swap + 2-opt,508,2982.3154,0.030
+relocate + swap + 2-opt,509,3179.8027,0.020
+relocate + swap + 2-opt,510,2611.9542,0.027
+relocate + swap + 2-opt,511,3501.5196,0.025
+relocate + swap + 2-opt,512,3675.8005,0.030
+relocate + swap + 2-opt,513,3875.4505,0.043
+relocate + swap + 2-opt,514,2392.8772,0.027
+relocate + swap + 2-opt,515,3495.7806,0.028
+relocate + swap + 2-opt,516,3839.7458,0.024
+relocate + swap + 2-opt,517,3622.1779,0.026
+relocate + swap + 2-opt,518,3185.8587,0.030
+relocate + swap + 2-opt,519,3127.5693,0.028
++ 2-opt* (= all but SWAP*),500,3685.9078,0.022
++ 2-opt* (= all but SWAP*),501,2543.3642,0.038
++ 2-opt* (= all but SWAP*),502,3210.8065,0.025
++ 2-opt* (= all but SWAP*),503,3231.4393,0.032
++ 2-opt* (= all but SWAP*),504,2542.9814,0.026
++ 2-opt* (= all but SWAP*),505,3443.1845,0.024
++ 2-opt* (= all but SWAP*),506,2645.1679,0.029
++ 2-opt* (= all but SWAP*),507,2564.9628,0.032
++ 2-opt* (= all but SWAP*),508,2806.5089,0.028
++ 2-opt* (= all but SWAP*),509,3133.3382,0.024
++ 2-opt* (= all but SWAP*),510,2611.9542,0.024
++ 2-opt* (= all but SWAP*),511,3424.0660,0.030
++ 2-opt* (= all but SWAP*),512,3497.0312,0.039
++ 2-opt* (= all but SWAP*),513,3894.0457,0.039
++ 2-opt* (= all but SWAP*),514,2353.3226,0.029
++ 2-opt* (= all but SWAP*),515,3503.0316,0.027
++ 2-opt* (= all but SWAP*),516,3547.4020,0.049
++ 2-opt* (= all but SWAP*),517,3613.7854,0.030
++ 2-opt* (= all but SWAP*),518,3197.9834,0.030
++ 2-opt* (= all but SWAP*),519,3103.1748,0.034
++ SWAP* (= all but 2-opt*),500,3846.8586,0.032
++ SWAP* (= all but 2-opt*),501,2532.9830,0.046
++ SWAP* (= all but 2-opt*),502,3156.1327,0.035
++ SWAP* (= all but 2-opt*),503,3118.7577,0.040
++ SWAP* (= all but 2-opt*),504,2571.6462,0.035
++ SWAP* (= all but 2-opt*),505,3398.4477,0.028
++ SWAP* (= all but 2-opt*),506,2704.4122,0.031
++ SWAP* (= all but 2-opt*),507,2571.2965,0.045
++ SWAP* (= all but 2-opt*),508,2998.3391,0.079
++ SWAP* (= all but 2-opt*),509,3150.3096,0.035
++ SWAP* (= all but 2-opt*),510,2611.0697,0.027
++ SWAP* (= all but 2-opt*),511,3441.3358,0.038
++ SWAP* (= all but 2-opt*),512,3629.7466,0.039
++ SWAP* (= all but 2-opt*),513,3929.8080,0.048
++ SWAP* (= all but 2-opt*),514,2395.5880,0.029
++ SWAP* (= all but 2-opt*),515,3545.5637,0.042
++ SWAP* (= all but 2-opt*),516,3739.6381,0.061
++ SWAP* (= all but 2-opt*),517,3525.8898,0.033
++ SWAP* (= all but 2-opt*),518,3154.2886,0.032
++ SWAP* (= all but 2-opt*),519,3107.3385,0.037
++ both = all five,500,3704.7324,0.037
++ both = all five,501,2509.2927,0.040
++ both = all five,502,3198.9502,0.034
++ both = all five,503,2996.7323,0.051
++ both = all five,504,2420.7719,0.055
++ both = all five,505,3358.2073,0.042
++ both = all five,506,2633.6692,0.041
++ both = all five,507,2591.0543,0.042
++ both = all five,508,2788.8965,0.064
++ both = all five,509,3157.0956,0.035
++ both = all five,510,2611.0697,0.031
++ both = all five,511,3027.8065,0.071
++ both = all five,512,3481.6932,0.037
++ both = all five,513,3888.5883,0.070
++ both = all five,514,2394.9268,0.036
++ both = all five,515,3435.3116,0.065
++ both = all five,516,3609.6688,0.051
++ both = all five,517,3473.9382,0.041
++ both = all five,518,3183.4711,0.036
++ both = all five,519,3084.5026,0.048
+all five but relocate,500,3722.6839,0.022
+all five but relocate,501,2495.0744,0.023
+all five but relocate,502,3194.9686,0.018
+all five but relocate,503,3187.2116,0.026
+all five but relocate,504,2443.4820,0.027
+all five but relocate,505,3470.7368,0.017
+all five but relocate,506,2785.9571,0.020
+all five but relocate,507,2577.2105,0.020
+all five but relocate,508,2893.2542,0.021
+all five but relocate,509,3192.4649,0.021
+all five but relocate,510,2626.7905,0.014
+all five but relocate,511,3374.2549,0.037
+all five but relocate,512,3611.0585,0.021
+all five but relocate,513,3992.9238,0.022
+all five but relocate,514,2451.7107,0.019
+all five but relocate,515,3507.7336,0.038
+all five but relocate,516,3709.1156,0.027
+all five but relocate,517,3494.2087,0.019
+all five but relocate,518,3377.0940,0.018
+all five but relocate,519,3240.4894,0.024
+all five but swap,500,3704.7324,0.030
+all five but swap,501,2509.2927,0.036
+all five but swap,502,3198.9502,0.036
+all five but swap,503,2987.9546,0.050
+all five but swap,504,2434.7063,0.041
+all five but swap,505,3346.2724,0.037
+all five but swap,506,2633.6692,0.042
+all five but swap,507,2488.4788,0.051
+all five but swap,508,2782.6915,0.042
+all five but swap,509,3157.0956,0.031
+all five but swap,510,2611.0697,0.025
+all five but swap,511,3307.9779,0.055
+all five but swap,512,3463.1099,0.033
+all five but swap,513,3883.7955,0.047
+all five but swap,514,2316.5751,0.033
+all five but swap,515,3438.9599,0.049
+all five but swap,516,3745.7053,0.038
+all five but swap,517,3469.1430,0.036
+all five but swap,518,3211.1619,0.030
+all five but swap,519,3084.5026,0.060
+all five but 2-opt,500,3554.7960,0.050
+all five but 2-opt,501,2496.7507,0.037
+all five but 2-opt,502,3153.1309,0.047
+all five but 2-opt,503,3134.1741,0.052
+all five but 2-opt,504,2531.1267,0.037
+all five but 2-opt,505,3470.7591,0.034
+all five but 2-opt,506,2700.4276,0.042
+all five but 2-opt,507,2537.5578,0.046
+all five but 2-opt,508,2843.7828,0.040
+all five but 2-opt,509,3173.3289,0.040
+all five but 2-opt,510,2676.6421,0.034
+all five but 2-opt,511,3156.1144,0.064
+all five but 2-opt,512,3553.4091,0.044
+all five but 2-opt,513,3918.5038,0.060
+all five but 2-opt,514,2435.9174,0.037
+all five but 2-opt,515,3591.4135,0.039
+all five but 2-opt,516,3516.3327,0.061
+all five but 2-opt,517,3638.9962,0.041
+all five but 2-opt,518,3059.7230,0.044
+all five but 2-opt,519,3074.2916,0.063

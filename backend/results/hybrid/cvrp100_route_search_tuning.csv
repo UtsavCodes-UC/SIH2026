@@ -1,0 +1,71 @@
+setting,instance_seed,cost,seconds
+"default (ruin 4-12, 12 neighbours, keep only better)",600,2909.8621,1.44
+"default (ruin 4-12, 12 neighbours, keep only better)",601,2680.8911,1.46
+"default (ruin 4-12, 12 neighbours, keep only better)",602,2405.8347,1.33
+"default (ruin 4-12, 12 neighbours, keep only better)",603,2615.0959,1.42
+"default (ruin 4-12, 12 neighbours, keep only better)",604,3701.7867,1.59
+"default (ruin 4-12, 12 neighbours, keep only better)",605,3063.0193,1.37
+"default (ruin 4-12, 12 neighbours, keep only better)",606,3747.2895,1.49
+"default (ruin 4-12, 12 neighbours, keep only better)",607,3012.3433,1.55
+"default (ruin 4-12, 12 neighbours, keep only better)",608,3657.7014,1.67
+"default (ruin 4-12, 12 neighbours, keep only better)",609,2520.2863,1.55
+smaller ruin (3-8),600,2935.3040,1.22
+smaller ruin (3-8),601,2751.8511,1.28
+smaller ruin (3-8),602,2411.0394,1.40
+smaller ruin (3-8),603,2643.4346,1.29
+smaller ruin (3-8),604,3689.9113,1.34
+smaller ruin (3-8),605,3066.2563,1.30
+smaller ruin (3-8),606,3762.0059,1.59
+smaller ruin (3-8),607,3039.5827,1.16
+smaller ruin (3-8),608,3678.1251,1.33
+smaller ruin (3-8),609,2577.1819,1.18
+larger ruin (8-20),600,2899.9202,2.91
+larger ruin (8-20),601,2670.5455,3.25
+larger ruin (8-20),602,2409.4558,2.93
+larger ruin (8-20),603,2631.8210,2.79
+larger ruin (8-20),604,3699.7911,2.95
+larger ruin (8-20),605,3003.7542,2.96
+larger ruin (8-20),606,3741.7115,3.12
+larger ruin (8-20),607,3005.0668,2.54
+larger ruin (8-20),608,3598.6597,3.11
+larger ruin (8-20),609,2534.5965,2.74
+8 neighbours,600,2899.9595,1.18
+8 neighbours,601,2713.0945,1.16
+8 neighbours,602,2412.5624,1.22
+8 neighbours,603,2643.5041,1.14
+8 neighbours,604,3742.1218,1.32
+8 neighbours,605,3063.0416,1.02
+8 neighbours,606,3778.5620,1.13
+8 neighbours,607,3042.8414,1.13
+8 neighbours,608,3675.1153,1.52
+8 neighbours,609,2546.6413,1.14
+20 neighbours,600,2872.8194,2.77
+20 neighbours,601,2669.1385,2.67
+20 neighbours,602,2436.4804,2.18
+20 neighbours,603,2640.9415,2.71
+20 neighbours,604,3707.6548,2.69
+20 neighbours,605,3042.9774,2.86
+20 neighbours,606,3799.1738,2.88
+20 neighbours,607,2973.1991,2.62
+20 neighbours,608,3622.5192,2.51
+20 neighbours,609,2510.6801,2.47
+accept 0.1% worse,600,2935.7838,1.67
+accept 0.1% worse,601,2669.3939,1.66
+accept 0.1% worse,602,2402.8249,1.51
+accept 0.1% worse,603,2602.1666,1.87
+accept 0.1% worse,604,3716.8876,1.94
+accept 0.1% worse,605,3042.0797,1.68
+accept 0.1% worse,606,3738.0663,1.88
+accept 0.1% worse,607,3013.2866,1.82
+accept 0.1% worse,608,3633.6475,1.68
+accept 0.1% worse,609,2520.2863,1.56
+accept 0.3% worse,600,2916.1813,1.54
+accept 0.3% worse,601,2663.3151,1.81
+accept 0.3% worse,602,2420.6892,1.58
+accept 0.3% worse,603,2618.8334,1.87
+accept 0.3% worse,604,3716.8876,1.82
+accept 0.3% worse,605,3046.1874,1.68
+accept 0.3% worse,606,3746.2496,1.80
+accept 0.3% worse,607,3031.3553,1.71
+accept 0.3% worse,608,3662.0076,1.46
+accept 0.3% worse,609,2496.9938,1.23

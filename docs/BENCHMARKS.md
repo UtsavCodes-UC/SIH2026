@@ -1,6 +1,6 @@
 # Benchmark results
 
-## Read this first — current headline (Findings 7-9)
+## Read this first — current headline (Findings 7-13)
 
 The problem statement's core claim is that QPSO gives "stronger global
 search, faster convergence, and a better balance between exploration and
@@ -66,6 +66,14 @@ instances, so the gaps below use the corrected ones. The original text said the 
 QPSO was within 0.1% of OR-Tools at 100 stops and the multi-vehicle pipelines 4-6% above
 it; corrected, they are 3.2% and 6-9%. The conclusions about which components matter do
 not change, but "matches OR-Tools" does not survive.
+
+Finding 13 then built the stronger search Finding 12 pointed at: moves between routes (2-opt\*, SWAP\*) with neighbour
+lists, and an iterated local search on top (`app/core/route_search.py`). From nearest neighbour it reaches 4.9% above
+the 60 s OR-Tools reference in 0.05 s, and with 1,000 iterations (about 10 s) it is 2.6% below it on all 20 instances
+(100 customers, synthetic graphs). Starting it from the routes of a QPSO, a PSO or a GA instead adds nothing
+measurable, and given the swarm's running time as extra iterations nearest neighbour is equal or better: what beats
+OR-Tools here is the search, not the swarm. It is built for fleets and is slow on a single long tour, and it was not
+tested with the swarm inside the loop, against standard instances with known optima, or on real road graphs.
 
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
@@ -571,6 +579,167 @@ Reproduce (from `backend/`; the CSVs are in `results/hybrid/`):
 ```
 python scripts/hybrid_experiments.py --problem cvrp --stops 100 --instances 20 --decoder optimal --variants pso_warm qpso_warm ga_warm h_qpso h_pso --reference pso_warm --csv results/hybrid/cvrp100_optimal.csv
 python scripts/decoder_analysis.py
+```
+
+## Finding 13 — a stronger search between routes beats the OR-Tools reference, and the swarms add nothing on top of it
+
+**The question.** Finding 12 left our multi-vehicle pipelines 6-9% above OR-Tools and pointed at the likely reason:
+OR-Tools searches with richer moves between routes than our polish (relocate, swap, 2-opt). If our search between routes
+is as strong as OR-Tools', where does that leave us, and do QPSO, PSO or GA still add anything? (The external review
+pictured the swarm as the "global diversification" engine and local search as the "intensification".)
+
+**What was built.** `app/core/route_search.py`, a search over whole sets of routes:
+
+- five moves, each scored exactly for our directed, congested travel times: relocate a run of 1-3 stops, swap two
+  stops, **2-opt\*** (two routes exchange their tails), **SWAP\*** (two stops from different routes each go to their
+  best position in the other's route, not necessarily where the other stop was) and 2-opt inside a route;
+- a stop is only paired with its 12 nearest stops, and after a move only the routes it touched are re-examined, so
+  repairing a small change costs milliseconds instead of a full scan;
+- exactly `n_vehicles` route slots (a van can be emptied, an idle one can be used), cost = travel time + 1000 x overload;
+- **iterated local search (ILS)**: remove a cluster of 4-12 nearby stops, reinsert each at its cheapest position,
+  repair with the local search, keep the result if it is better, and restore the best one at the end.
+
+29 tests (`tests/test_route_search.py`): the tracked cost always equals an independent evaluation; every stop is served
+once and the fleet limit holds; relocate, swap, 2-opt\* and SWAP\* are each checked against exhaustive search on small
+instances; a search never returns something worse (or overloaded) from a feasible start; ILS never gets worse and
+repeats for a given seed.
+
+**Reference.** The same as Finding 12: OR-Tools guided local search, 60 s per instance, mean **2,937.9** on the 20
+instances of Findings 10-12 (100 customers, seeds 500-519). Every number below is on those instances unless it says
+otherwise. "Above OR-Tools" is the mean of the per-instance gaps, so negative means our routes are cheaper.
+
+**1. Which moves matter.** Local search only, starting from nearest-neighbour routes. Wins/ties/losses compare each
+row with the older polish (`improve_routes`) per instance; the p-value is a sign test on the row being better. Seconds
+are per instance, one process on an idle machine.
+
+| moves | mean cost | above OR-Tools | seconds | wins/ties/losses vs older polish |
+|---|---|---|---|---|
+| older polish (`improve_routes`: 2-opt, relocate, swap, full sweeps) | 3,201 | +8.9% | 0.11 | |
+| relocate | 3,261 | +11.1% | 0.02 | 6/0/14 |
+| relocate + swap | 3,217 | +9.8% | 0.03 | 10/0/10 |
+| relocate + swap + 2-opt (the older polish's moves) | 3,194 | +8.8% | 0.03 | 8/0/12 |
+| ... + 2-opt\* | 3,128 | +6.6% | 0.03 | 11/0/9 |
+| ... + SWAP\* (instead of 2-opt\*) | 3,156 | +7.6% | 0.04 | 11/0/9 |
+| ... + both (all five) | **3,078** | **+4.9%** | 0.05 | **15/0/5, p = 0.021** |
+| all five without relocate | 3,167 | +7.9% | 0.02 | 12/0/8 |
+| all five without swap | 3,089 | +5.2% | 0.04 | 14/0/6, p = 0.058 |
+| all five without 2-opt | 3,111 | +6.1% | 0.05 | 16/0/4, p = 0.006 |
+
+- The older polish's three moves, run through neighbour lists and a work queue, reach the same cost (3,194 against
+  3,201; 8 wins, 12 losses) in about a quarter of the time.
+- 2-opt\* is worth 2.1% on top of them and SWAP\* 1.2%; together they are worth 3.6%. Only the combination is
+  significantly better than the older polish (15 wins, 5 losses); each alone is 11/0/9.
+- Taking any one move out of the five costs between 0.4% (swap, the most redundant) and 2.9% (relocate).
+- Local search alone (0.05 s) cuts the gap to OR-Tools from +8.9% to +4.9%. OR-Tools' 60 s tour is still better on 19
+  of the 20 instances at this point.
+
+**2. Iterated local search.** From nearest neighbour, local search, then ILS with the default settings:
+
+| | local search only | ILS 100 | ILS 200 | ILS 500 | ILS 1,000 | OR-Tools |
+|---|---|---|---|---|---|---|
+| mean cost | 3,078 | 2,898 | 2,886 | 2,871 | 2,861 | 2,938 |
+| above OR-Tools | +4.9% | -1.3% | -1.7% | -2.3% | **-2.6%** | |
+| instances cheaper than OR-Tools | 1 of 20 | 18 | 18 | 19 | **20** | |
+| time (about 10 ms per iteration) | 0.05 s | 1 s | 2 s | 5 s | 10 s | 60 s |
+
+At 1,000 iterations (about 10 s) it is cheaper than the 60 s OR-Tools reference on all 20 instances, by 1.2% to 5.5%; at
+100 iterations (about a second) it already wins 18 of 20. The final routes of all 80 runs in this experiment were
+recomputed from scratch and checked (each stop once, no overloaded van, fleet limit, and the search's own cost equal
+to the recomputed one). On three instances the cost was also recomputed from the cost matrix exported for OR-Tools
+(a one-off check, not in the repo's scripts), and all three ways agreed to the cent.
+
+The default settings were not fitted to these instances. On ten others (seeds 600-609, ILS 200 iterations) a smaller
+ruin (3-8 stops) or 8 neighbours were 0.7-0.8% worse (1 win, 9 losses each); a larger ruin (8-20 stops) was 0.4% better
+but took 1.9x as long, 20 neighbours 0.1% better at 1.7x, and accepting solutions up to 0.1% or 0.3% worse changed
+nothing (+0.1% and 0.0%). The defaults sit on a plateau (`scripts/route_search_ablation.py tuning`).
+
+**3. Do the swarms add anything?** Same local search and ILS, same random stream, same instances. The pipelines differ
+only in the routes they start from: nearest neighbour ("nn"), or the routes returned by a warm-started PSO, QPSO or GA
+(40 particles x 800 iterations, greedy decoder).
+
+| starting routes from | swarm phase | cost of the start | after local search | ILS 200 | ILS 1,000 | vs nn at ILS 1,000 (wins/ties/losses) | same total time as nn, ILS 1,000 |
+|---|---|---|---|---|---|---|---|
+| nn | 0 s | 3,634 | 3,078 | 2,886 | 2,861 | | |
+| PSO | 2.6 s | 3,457 | 3,096 | 2,884 | 2,864 | 8/1/11, -0.1% | 7/1/12, -0.2% |
+| QPSO | 2.8 s | 3,479 | 3,062 | 2,882 | 2,860 | 5/13/2, 0.0% | 4/10/6, -0.1% |
+| GA | 1.1 s | 3,495 | 3,059 | 2,881 | 2,861 | 5/10/5, -0.1% | 5/7/8, -0.1% |
+
+- The swarms' routes start 4-5% cheaper than nearest neighbour's, but local search takes that away: after it the four
+  are within 1.2% of each other, and after 1,000 ILS iterations within 0.15%.
+- At the same number of ILS iterations, 1 of the 12 comparisons against nn is below p = 0.05 (GA at 100 iterations:
+  9 wins, 10 ties, 1 loss, +0.2%, p = 0.011), and it is gone by 500 iterations. That is the kind of result twelve
+  comparisons produce by chance.
+- The swarm phase costs time nn does not spend: about 240 (PSO), 270 (QPSO) and 110 (GA) ILS iterations' worth. Given
+  that time back as extra ILS iterations, nn is equal or better in every comparison: QPSO at 100 iterations
+  1 win, 19 losses (-0.9%); by 1,000 iterations the difference is 0.1% and not significant.
+- QPSO against PSO, same start budget, ILS 100 / 200 / 500 / 1,000: 11/1/8, 9/1/10, 7/1/12, 10/2/8 wins/ties/losses, all
+  differences at most 0.1%, no p below 0.3.
+
+**Why the swarm adds nothing here.** On 12 of the 20 instances the QPSO routes end, after local search, at exactly the
+same cost as nearest neighbour's (10 of 20 for GA; PSO never), and the ILS that follows takes the same path. Checked on
+two of them, the swarm's routes contain exactly the same groups of stops per van as the nearest-neighbour routes; the
+swarm only reordered stops inside vans, and the local search's own 2-opt does that anyway. What the swarm was asked to
+find, a better way of dividing the customers among vans, is what the moves between routes do better and faster.
+This is Finding 12 again from the other side.
+
+**4. Speed and size.** One instance per size (seed 500; capacity 100, demands 5-25, fleet for 85% utilisation, about
+6 stops per van), idle machine. Treat these numbers as rough: an earlier run of the same measurement gave 0.04-0.08 s
+for the local search and 9-11 ms per iteration.
+
+| customers | local search from nearest neighbour | one ILS iteration |
+|---|---|---|
+| 50 | 0.07 s | 8 ms |
+| 100 | 0.03 s | 10 ms |
+| 150 | 0.04 s | 12 ms |
+| 200 | 0.13 s | 14 ms |
+
+Each iteration only touches a cluster of stops and the routes around it, so the cost per iteration grows slowly with
+size. Solution quality at 150 and 200 customers has not been measured (there is no OR-Tools reference there).
+
+**5. One van is different.** The same search on a single-vehicle tour (the instances of Finding 11, seeds 300-319),
+nearest neighbour then 1,000 ILS iterations:
+
+| stops | local search only | ILS 1,000 | hybrid QPSO (Finding 11) | OR-Tools |
+|---|---|---|---|---|
+| 50 | 731.8 (+3.5%) | 719.4 (+1.7%) | 716.4 (+1.3%) | 707.2 |
+| 100 | 1,047.1 (+6.8%) | 1,006.9 (+2.7%) | 1,013.0 (+3.2%) | 981.3 |
+
+ILS is better than the hybrid QPSO on 12 of 20 instances at both sizes and better than OR-Tools on 4 and 3, so it is
+about as good as the hybrid, but far slower: 70 s per instance at 50 stops and about 5 minutes at 100 (measured with 8 processes running, so
+somewhat pessimistic), against 2.2 s and 12 s for the hybrid on an idle machine. With one van every move
+touches the whole route and 2-opt inside a route is quadratic. The search is built for fleets; for one long tour use the
+hybrid engine.
+
+**What this supports, and what it does not.**
+
+- Supported: on these instances (100 customers, synthetic graphs, 85% utilisation) nearest neighbour + this local search
+  reaches 4.9% above the 60 s OR-Tools reference in 0.05 s, and with 1,000 ILS iterations (about 10 s) it is 2.6% below it,
+  cheaper on all 20 instances. The moves between routes, 2-opt\* and SWAP\* above all, are what closes the gap that
+  Finding 12 left open.
+- Supported: used to produce starting routes for this search, QPSO, PSO and GA add nothing measurable at 100 customers,
+  and QPSO and PSO are indistinguishable.
+- Not supported: that this beats OR-Tools in general. It is one OR-Tools configuration (guided local search, one
+  thread, 60 s, untuned) on one instance family. Nor that it is near optimal: the state of the art for this problem
+  (HGS-CVRP) would very likely beat both, and standard instances with known optima (none are used here) are the way
+  to measure how far away we are.
+- Not tested: a swarm with the route search inside its loop (particles improved by the search every iteration). Only
+  "swarm first, search after" was tested, so this finding does not show that a swarm cannot help in that role.
+- Not tested: other sizes, looser or tighter fleets (long routes make each iteration slower, see 5), real OSM graphs.
+
+**Caveats.** 20 instances, one algorithm seed per instance. The time-matched comparison uses times measured with 8
+processes running and reads nearest neighbour at the next multiple of 100 iterations, which favours it by up to 99
+iterations (about a second). The ILS settings were checked on 10 other instances, not tuned on these. The OR-Tools
+reference is from Finding 12, with its caveats.
+
+Reproduce (from `backend/`; the CSVs are in `results/hybrid/`):
+
+```
+python scripts/route_search_experiments.py --instances 20 --workers 8 --csv results/hybrid/cvrp100_route_search.csv
+python scripts/route_search_experiments.py --from-csv results/hybrid/cvrp100_route_search.csv
+python scripts/route_search_ablation.py operators --csv results/hybrid/cvrp100_route_search_operators.csv
+python scripts/route_search_ablation.py tuning --csv results/hybrid/cvrp100_route_search_tuning.csv
+python scripts/route_search_ablation.py timing
+python scripts/route_search_ablation.py tours
 ```
 
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)
