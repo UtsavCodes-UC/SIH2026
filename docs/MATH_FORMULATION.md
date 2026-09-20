@@ -9,7 +9,8 @@ Equations are written as plain text so they read the same everywhere.
 
 A fleet of identical vans starts at one depot, must visit every delivery stop exactly once, and returns to the depot. Each
 van can carry at most Q units. Driving times come from a road network whose travel times change with traffic. We look for the
-set of routes that minimizes the **total driving time of all vans**. With one van this is the travelling-salesman problem;
+set of routes that minimizes the **total driving time of all vans**, or, if asked, a weighted blend of driving time, distance
+and congestion delay. With one van this is the travelling-salesman problem;
 with several it is the capacitated vehicle routing problem (CVRP). Both are NP-hard, so the code searches heuristically
 (QPSO, PSO, GA, a route search) and, for very small single-van cases, exactly (Held-Karp).
 
@@ -33,6 +34,11 @@ length_a        km
 tau_a           free-flow travel time, minutes  =  length_a / free-flow speed
 gamma_a > 0     congestion factor: 1.0 = free flow, 2.5 = 2.5x slower
 w_a = tau_a * gamma_a      current travel time of the arc                  (graph_model.py)
+
+delay_a = tau_a * max(0, gamma_a - 1)        minutes lost to congestion on the arc; 0 on a free-flowing road
+c_a = alpha * w_a + beta * length_a + kappa * delay_a      the cost of the arc               (cost_model.py)
+      alpha, beta, kappa >= 0, not all zero: the weights on time, distance and congestion
+      default alpha = 1, beta = kappa = 0, i.e. plain travel time
 ```
 
 Free-flow speed is the OpenStreetMap `maxspeed` tag when present, otherwise a typical urban speed for the road class
@@ -60,10 +66,12 @@ recorded       a saved set of gamma_a values replayed later
 Only travel between the depot and the stops matters. For a problem with depot 0 and stops S = {1, ..., n} we compute, once,
 
 ```
-t(u, v) = length of the quickest path from u to v in G under the current weights w_a      (Dijkstra from each node)
+t(u, v) = cost of the cheapest path from u to v in G under the arc costs c_a      (Dijkstra from each node)
 ```
 
-for every u, v in {0} u S. t is asymmetric (t(u,v) may differ from t(v,u)) and obeys the triangle inequality. With it, any
+for every u, v in {0} u S. With the default weights that is the quickest travel time; with others a leg follows the cheapest
+road under the blend, which can be a slightly longer road that avoids a jam. All three terms of c_a are non-negative, so
+Dijkstra applies. t is asymmetric (t(u,v) may differ from t(v,u)) and obeys the triangle inequality. With it, any
 candidate plan is scored without touching the graph again (`RoutingProblem`, `vrp_formulation.py`). The map shows the actual
 roads: each leg is drawn along its quickest path (`views.py`).
 
@@ -95,8 +103,12 @@ infeasible plans on its way between feasible ones. Feasibility is always reporte
 `capacity_violation`, and the UI shows "all respected" or the overload); with the app's auto-sized fleet a feasible plan
 normally exists. If the total demand exceeds the fleet's capacity none does, and the API says so (`problem_warnings`).
 
-The objective is **sum of driving times**. The time at which the last van gets home ("job finishes in") is shown in the UI but
-not optimized; loading and unloading time is not modelled.
+By default the objective is the **sum of driving times** (alpha = 1); with the other weights T(R) above is the route's total
+arc cost, a blend of minutes, kilometres and congestion delay (the "Travel time / Distance / Congestion" sliders in the UI).
+Whatever the weights, a finished plan is reported in real units: minutes driven, kilometres and minutes of congestion delay,
+each added up along the roads actually driven (`path_metrics`), next to the weighted cost that was minimized (BENCHMARKS.md,
+Finding 16). Only the ratios of the weights matter. The time at which the last van gets home ("job finishes in") is shown in
+the UI but not optimized; loading and unloading time is not modelled.
 
 The same problem as an integer program (the standard three-index CVRP formulation; the code does *not* solve it this way, it
 searches over routes, which builds the constraints into the representation):

@@ -103,8 +103,11 @@ class TrafficGraph:
 
     # ---- routing queries ----------------------------------------------------
 
-    def shortest_path(self, source, target) -> list:
-        return nx.shortest_path(self._g, source, target, weight="weight")
+    def shortest_path(self, source, target, weights=None) -> list:
+        """Quickest path; or, given `CostWeights`, the cheapest path under that blend of time, distance and congestion."""
+        if weights is None or weights.is_default:
+            return nx.shortest_path(self._g, source, target, weight="weight")
+        return nx.shortest_path(self._g, source, target, weight=lambda u, v, edge: weights.arc_cost(edge))
 
     def shortest_path_time(self, source, target) -> float:
         return nx.shortest_path_length(self._g, source, target, weight="weight")
@@ -119,6 +122,14 @@ class TrafficGraph:
         for n in nodes:
             result[n] = nx.single_source_dijkstra_path_length(self._g, n, weight="weight")
         return result
+
+    def all_pairs_shortest_cost(self, nodes: Iterable, weights) -> dict[object, dict[object, float]]:
+        """Like `all_pairs_shortest_time`, but the cost of an arc is the blend of time, distance and congestion in
+        `weights` (see core/cost_model.py). With the default weights it is exactly `all_pairs_shortest_time`."""
+        if weights.is_default:
+            return self.all_pairs_shortest_time(nodes)
+        arc_cost = lambda u, v, edge: weights.arc_cost(edge)  # noqa: E731
+        return {n: nx.single_source_dijkstra_path_length(self._g, n, weight=arc_cost) for n in nodes}
 
     # ---- serialization (Day 2: API request/response payloads) --------------
 

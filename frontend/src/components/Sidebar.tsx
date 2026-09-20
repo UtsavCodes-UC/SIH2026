@@ -31,6 +31,19 @@ interface Props {
 
 const ALGORITHMS: Algorithm[] = ["qpso", "pso", "ga", "nearest_neighbor", "route_search"];
 
+const WEIGHT_LABELS = { time: "Travel time", distance: "Distance", congestion: "Congestion" } as const;
+const WEIGHT_HELP = {
+  time: "Minutes spent driving, congestion included",
+  distance: "Kilometres driven",
+  congestion: "Minutes lost to congestion: how much longer the roads take than in free flow",
+} as const;
+const WEIGHT_PRESETS = [
+  { name: "Fastest", title: "Minimize travel time only (the default)", weights: { time: 100, distance: 0, congestion: 0 } },
+  { name: "Shortest", title: "Minimize kilometres driven", weights: { time: 0, distance: 100, congestion: 0 } },
+  { name: "Avoid jams", title: "Half travel time, half congestion delay", weights: { time: 50, distance: 0, congestion: 50 } },
+  { name: "Balanced", title: "40% time, 30% distance, 30% congestion", weights: { time: 40, distance: 30, congestion: 30 } },
+];
+
 function numberInput(value: number, onChange: (n: number) => void, min: number, max: number, step = 1) {
   return (
     <input
@@ -201,6 +214,40 @@ export default function Sidebar(props: Props) {
 
       <section>
         <h2>3 · Solver</h2>
+        <h3 className="subhead">What to minimize</h3>
+        <div className="grid-2 presets">
+          {WEIGHT_PRESETS.map((p) => (
+            <button key={p.name} className="btn btn-secondary" disabled={!idle} title={p.title} onClick={() => onParams({ weights: p.weights })}>
+              {p.name}
+            </button>
+          ))}
+        </div>
+        {(["time", "distance", "congestion"] as const).map((key) => {
+          const total = params.weights.time + params.weights.distance + params.weights.congestion;
+          return (
+            <label key={key} className="weight" title={WEIGHT_HELP[key]}>
+              <span>
+                {WEIGHT_LABELS[key]} <strong>{total > 0 ? Math.round((100 * params.weights[key]) / total) : 0}%</strong>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={params.weights[key]}
+                onChange={(e) => {
+                  const next = { ...params.weights, [key]: Number(e.target.value) };
+                  if (next.time + next.distance + next.congestion > 0) onParams({ weights: next }); // something must stay to minimize
+                }}
+              />
+            </label>
+          );
+        })}
+        <p className="hint">
+          Time is minutes driven, distance is kilometres, congestion is the minutes lost to jams compared with free flow. The optimizer minimizes
+          the weighted blend; the results always show the real minutes, kilometres and delay.
+          {params.weights.congestion > 0 && graph && graph.summary.mean_congestion <= 1 && " The map is at free flow, so there is no congestion to avoid."}
+        </p>
         <label>
           Algorithm
           <select value={params.algorithm} onChange={(e) => onParams({ algorithm: e.target.value as Algorithm })}>

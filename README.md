@@ -60,7 +60,10 @@ cd backend && python scripts/warm_city_cache.py
    suggested again later, even without the internet.
 2. **Delivery problem** — draw random stops, or click the map ("set depot" / "toggle stops");
    set the fleet size (blank = auto) and vehicle capacity.
-3. **Solver** — pick QPSO / PSO / GA / nearest neighbour and press *Optimize routes*: routes are drawn
+3. **Solver** — first choose *what to minimize*: travel time (the default), distance, congestion delay (the
+   minutes lost to jams compared with free flow), or a blend, with the presets *Fastest / Shortest / Avoid jams /
+   Balanced* or the three sliders; results always show the real minutes, kilometres and delay, and *Weighted cost*
+   when the blend is not plain time. Then pick QPSO / PSO / GA / nearest neighbour and press *Optimize routes*: routes are drawn
    along the roads, numbered by visiting order, with per-vehicle load, time and distance and the
    search's convergence curve. *Benchmark* runs every algorithm on the same problem. Two options are on
    by default: *Warm start* (the search begins with a nearest-neighbour route in its population; needed
@@ -136,6 +139,10 @@ Interactive docs at http://localhost:8000/docs.
 | `POST /api/optimize` | solve one problem; routes come back as polylines along the roads. `algorithm` is `qpso` (default), `pso`, `ga`, `nearest_neighbor` or `route_search`; the last takes `time_limit_sec` (1-60, default 10) and ignores the swarm settings and `polish` |
 | `POST /api/benchmark` | run every algorithm on one problem (raw and 2-opt-polished costs); `include_route_search: true` adds the route search (with `time_limit_sec`) |
 
+Both solve endpoints take `cost_weights` (`{"time": 1, "distance": 0, "congestion": 0}` by default, all non-negative,
+not all zero, only the ratios matter). `POST /api/optimize` returns `total_time_min`, `total_distance_km` and
+`total_delay_min` in real units, and `cost` as the weighted cost that was minimized.
+
 Anything left out of a problem (depot, stops, demands, fleet size) is filled in from `seed` and
 echoed back in the response, so the same problem can be re-solved after the traffic changes.
 
@@ -147,7 +154,7 @@ backend/
   app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions, CVRPLIB benchmark adapter
   app/services/    graph store, problem builder, solver dispatch, map/route views, live traffic, snapshots
   app/api/         FastAPI routers          app/schemas/   request/response models
-  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, ...), check_tomtom.py, warm_city_cache.py
+  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, cost_weights_tradeoff.py, ...), check_tomtom.py, warm_city_cache.py
   tests/           pytest suite (run from backend/: python -m pytest tests/)
   results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
 frontend/          React + TypeScript + Leaflet + Recharts map UI

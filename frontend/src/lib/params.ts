@@ -1,6 +1,10 @@
-import type { Algorithm } from "../api/types";
+import type { Algorithm, CostWeights } from "../api/types";
+
+/** How much each of the three things matters, as sliders from 0 to 100. Only the ratios count. */
+export type WeightPercents = CostWeights;
 
 export interface SolverParams {
+  weights: WeightPercents;
   algorithm: Algorithm;
   nVehicles: number | null; // null = let the server size the fleet
   capacity: number;
@@ -14,6 +18,7 @@ export interface SolverParams {
 
 // The default solver is QPSO with a warm start and the polish. The route search is an option, not the default.
 export const DEFAULT_PARAMS: SolverParams = {
+  weights: { time: 100, distance: 0, congestion: 0 }, // minimize travel time, as always
   algorithm: "qpso",
   nVehicles: null,
   capacity: 100,

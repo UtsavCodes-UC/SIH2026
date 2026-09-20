@@ -30,6 +30,8 @@ Objective (minimize):
     total_time(pi) = sum over vehicles of the shortest-path travel time along
                      [depot, s_1, ..., s_k, depot]   (weights include live congestion)
                    + penalty * capacity_violation(pi)
+    With `RouteRequest.cost_weights` the "travel time" of a leg becomes a weighted blend of minutes, kilometres and
+    minutes lost to congestion (core/cost_model.py); the default is plain time.
 
 Constraints:
     - every stop visited exactly once      -> guaranteed by the permutation encoding
@@ -51,6 +53,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Sequence
 
+from app.core.cost_model import CostWeights
 from app.core.graph_model import TrafficGraph
 
 
@@ -66,6 +69,7 @@ class RouteRequest:
     vehicle_capacity: float | None = None
     n_vehicles: int = 1
     decoder: str = "greedy"  # how a visiting order is cut into vehicle routes: "greedy" or "optimal" (see above)
+    cost_weights: CostWeights | None = None  # what a leg costs (core/cost_model.py); None = plain travel time, as always
 
 
 @dataclass
@@ -119,7 +123,10 @@ class RoutingProblem:
         self.graph = graph
         self.request = request
         nodes = [request.depot, *dict.fromkeys(request.stops)]
-        self._leg_time = graph.all_pairs_shortest_time(nodes)
+        if request.cost_weights is None or request.cost_weights.is_default:
+            self._leg_time = graph.all_pairs_shortest_time(nodes)
+        else:  # the "time" of a leg is then its blended cost: minutes, kilometres and congestion delay, weighted
+            self._leg_time = graph.all_pairs_shortest_cost(nodes, request.cost_weights)
         self._check_reachable(nodes)
         # The optimal split needs capacities to cut on, and every stop must fit a vehicle on its own.
         self._optimal = (

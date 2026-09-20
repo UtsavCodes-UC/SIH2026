@@ -8,6 +8,7 @@ import random
 
 import numpy as np
 
+from app.core.cost_model import CostWeights
 from app.core.vrp_formulation import RouteRequest
 from app.schemas.solve import ProblemSpec
 from app.services.graph_store import StoredGraph
@@ -72,4 +73,5 @@ def resolve_problem(stored: StoredGraph, spec: ProblemSpec) -> RouteRequest:
         demands=demands,
         vehicle_capacity=spec.vehicle_capacity,
         n_vehicles=n_vehicles,
+        cost_weights=CostWeights(spec.cost_weights.time, spec.cost_weights.distance, spec.cost_weights.congestion),
     )

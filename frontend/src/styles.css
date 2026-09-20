@@ -124,6 +124,22 @@ select {
   width: 100%;
 }
 
+input[type="range"] {
+  width: 100%;
+  accent-color: #d1495b;
+  margin: 0;
+}
+
+.presets {
+  gap: 8px 10px;
+  margin-bottom: 10px;
+}
+
+label.weight > span {
+  display: flex;
+  justify-content: space-between;
+}
+
 .grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

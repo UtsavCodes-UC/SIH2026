@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from app.core.cost_model import CostWeights, path_metrics
 from app.core.graph_model import TrafficGraph
 from app.core.vrp_formulation import RoutingProblem
 from app.schemas.graph import GraphSummary, GraphView
-from app.schemas.solve import ResolvedProblem, RouteOut
+from app.schemas.solve import CostWeightsSpec, ResolvedProblem, RouteOut
 from app.services.graph_store import StoredGraph
 
 
@@ -44,37 +45,38 @@ def graph_view(stored: StoredGraph) -> GraphView:
     return GraphView(summary=graph_summary(stored), nodes=nodes, edges=edges)
 
 
-def _leg_polyline(graph: TrafficGraph, u, v) -> tuple[list[list[float]], float]:
-    """Follow the quickest path from u to v; returns ([lat, lon] points, km driven)."""
+def _leg_polyline(graph: TrafficGraph, u, v, weights: CostWeights | None = None):
+    """Follow the cheapest path from u to v (the quickest, unless other weights were asked for). Returns the
+    [lat, lon] points and the path's real metrics: minutes, kilometres and congestion delay."""
     g = graph.graph
-    path = graph.shortest_path(u, v)
+    path = graph.shortest_path(u, v, weights)
     points: list[list[float]] = []
-    distance = 0.0
     for a, b in zip(path, path[1:]):
         edge = g[a][b]
-        distance += edge["distance_km"]
         shape = edge.get("shape")
         segment = [list(p) for p in shape] if shape else [
             [g.nodes[a]["lat"], g.nodes[a]["lon"]],
             [g.nodes[b]["lat"], g.nodes[b]["lon"]],
         ]
         points.extend(segment if not points else segment[1:])
-    return points, distance
+    return points, path_metrics(graph, path)
 
 
 def route_outputs(stored: StoredGraph, problem: RoutingProblem, routes: list[list]) -> list[RouteOut]:
     loads = problem.route_loads(routes)
+    weights = problem.request.cost_weights
     outputs = []
     for vehicle, (route, load) in enumerate(zip(routes, loads), start=1):
         polyline: list[list[float]] = []
-        distance = 0.0
+        time_min = distance = delay = 0.0
         for u, v in zip(route, route[1:]):
-            points, leg_km = _leg_polyline(stored.graph, u, v)
+            points, metrics = _leg_polyline(stored.graph, u, v, weights)
             polyline.extend(points if not polyline else points[1:])
-            distance += leg_km
-        time_min = sum(problem.leg_time(u, v) for u, v in zip(route, route[1:]))
+            time_min += metrics.time_min
+            distance += metrics.distance_km
+            delay += metrics.delay_min
         outputs.append(
-            RouteOut(vehicle=vehicle, nodes=list(route), path=polyline, load=load, time_min=time_min, distance_km=distance)
+            RouteOut(vehicle=vehicle, nodes=list(route), path=polyline, load=load, time_min=time_min, distance_km=distance, delay_min=delay)
         )
     return outputs
 
@@ -103,4 +105,7 @@ def resolved_problem(problem: RoutingProblem) -> ResolvedProblem:
         demands={s: float(request.demands[s]) for s in request.stops},
         n_vehicles=request.n_vehicles,
         vehicle_capacity=float(request.vehicle_capacity),
+        cost_weights=CostWeightsSpec(
+            time=request.cost_weights.time, distance=request.cost_weights.distance, congestion=request.cost_weights.congestion
+        ) if request.cost_weights is not None else CostWeightsSpec(),
     )

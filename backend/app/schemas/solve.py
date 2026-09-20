@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.graph import TrafficInfo
 
@@ -12,6 +12,21 @@ TIME_LIMIT_DESCRIPTION = (
     "route search only: how long the iterated search may run, in seconds (it stops sooner on a small problem "
     "that has stopped improving). Ignored by the other algorithms"
 )
+
+
+class CostWeightsSpec(BaseModel):
+    """What the optimizer minimizes, as a blend: time x minutes driven + distance x km + congestion x minutes lost to
+    congestion (extra time compared with free flow). Only the ratios matter. The default, time alone, is plain travel time."""
+
+    time: float = Field(1.0, ge=0, le=1000)
+    distance: float = Field(0.0, ge=0, le=1000)
+    congestion: float = Field(0.0, ge=0, le=1000)
+
+    @model_validator(mode="after")
+    def _something_to_minimize(self):
+        if self.time + self.distance + self.congestion <= 0:
+            raise ValueError("at least one weight must be positive")
+        return self
 
 
 class ProblemSpec(BaseModel):
@@ -26,6 +41,7 @@ class ProblemSpec(BaseModel):
     demands: dict[int, float] | None = Field(None, description="load per stop; default: random 5-25")
     n_vehicles: int | None = Field(None, ge=1, le=40, description="default: enough vehicles for ~85% fleet utilization")
     vehicle_capacity: float = Field(100.0, gt=0)
+    cost_weights: CostWeightsSpec = Field(default_factory=CostWeightsSpec, description="what to minimize: time, distance and congestion weights")
     seed: int | None = 1
 
 
@@ -58,6 +74,7 @@ class RouteOut(BaseModel):
     load: float
     time_min: float
     distance_km: float
+    delay_min: float = 0.0  # of the time_min, the minutes lost to congestion compared with free flow
 
 
 class ResolvedProblem(BaseModel):
@@ -66,6 +83,7 @@ class ResolvedProblem(BaseModel):
     demands: dict[int, float]
     n_vehicles: int
     vehicle_capacity: float
+    cost_weights: CostWeightsSpec = CostWeightsSpec()
 
 
 class OptimizeResponse(BaseModel):
@@ -73,12 +91,13 @@ class OptimizeResponse(BaseModel):
     algorithm: Algorithm
     problem: ResolvedProblem
     routes: list[RouteOut]
-    total_time_min: float
+    total_time_min: float  # real minutes driven, added over all vehicles, whatever the weights were
     total_distance_km: float
+    total_delay_min: float = 0.0  # of total_time_min, the minutes lost to congestion
     capacity_violation: float
     feasible: bool
     raw_cost: float  # the algorithm's own result, before the polish
-    cost: float  # final cost (after the polish when `polished`)
+    cost: float  # final cost (after the polish when `polished`): the WEIGHTED cost, plus the overload penalty
     polished: bool
     warm_start: bool  # the swarm began with the nearest-neighbour solution in it
     convergence: list[float]  # best raw cost per iteration

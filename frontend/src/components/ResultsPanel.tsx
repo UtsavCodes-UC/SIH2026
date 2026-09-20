@@ -1,5 +1,5 @@
 import type { OptimizeResponse } from "../api/types";
-import { ALGORITHM_COLORS, ALGORITHM_LABELS, fmt, vehicleColor } from "../lib/helpers";
+import { ALGORITHM_COLORS, ALGORITHM_LABELS, describeWeights, fmt, isTimeOnly, vehicleColor } from "../lib/helpers";
 import ConvergenceChart from "./ConvergenceChart";
 import TrafficBadge from "./TrafficBadge";
 
@@ -9,6 +9,7 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
   }
 
   const { problem, routes } = result;
+  const timeOnly = isTimeOnly(problem.cost_weights); // the default objective: minutes driven and nothing else
   const gain = result.polished && result.raw_cost > 0 ? (1 - result.cost / result.raw_cost) * 100 : null;
   // Vehicles drive in parallel, so the job is done when the slowest one is home.
   const finishMin = Math.max(...routes.map((r) => r.time_min));
@@ -22,10 +23,10 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
       ))}
       <TrafficBadge info={result.traffic} inline />
       <div className="kpis">
-        <div className="kpi" title="All vans' driving minutes added together: what the optimizer minimizes (a cost measure)">
+        <div className="kpi" title="All vans' driving minutes added together, congestion included">
           <span>Total driving, all vans</span>
           <strong>{fmt(result.total_time_min)} min</strong>
-          <small>sum · what we minimize</small>
+          <small>{timeOnly ? "sum · what we minimize" : "sum of real minutes"}</small>
         </div>
         <div className="kpi" title="The vans drive at the same time, so the job ends when the longest route is finished">
           <span>Job finishes in</span>
@@ -36,6 +37,18 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
           <span>Total distance</span>
           <strong>{fmt(result.total_distance_km)} km</strong>
         </div>
+        <div className="kpi" title="Of the driving time, the minutes lost to congestion: how much longer the roads took than in free flow">
+          <span>Congestion delay</span>
+          <strong>{fmt(result.total_delay_min)} min</strong>
+          <small>{fmt(result.total_time_min > 0 ? (100 * result.total_delay_min) / result.total_time_min : 0, 0)}% of driving time</small>
+        </div>
+        {!timeOnly && (
+          <div className="kpi" title="The blend of minutes, kilometres and congestion delay that was minimized, plus any overload penalty">
+            <span>Weighted cost</span>
+            <strong>{fmt(result.cost)}</strong>
+            <small>{describeWeights(problem.cost_weights)}</small>
+          </div>
+        )}
         <div className="kpi">
           <span>Vehicles used</span>
           <strong>
@@ -74,6 +87,7 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
                 <th className="num">Load / cap.</th>
                 <th className="num">Time (min)</th>
                 <th className="num">Distance (km)</th>
+                <th className="num" title="minutes lost to congestion">Delay (min)</th>
               </tr>
             </thead>
             <tbody>
@@ -91,6 +105,7 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
                     {fmt(r.time_min)}
                   </td>
                   <td className="num">{fmt(r.distance_km)}</td>
+                  <td className="num">{fmt(r.delay_min)}</td>
                 </tr>
               ))}
             </tbody>
@@ -110,7 +125,7 @@ export default function ResultsPanel({ result }: { result: OptimizeResponse | nu
             <p className="empty">{ALGORITHM_LABELS[result.algorithm]} builds its answer in one pass, so there is no convergence curve.</p>
           )}
           <p className="hint">
-            Cost = travel time in minutes plus a heavy penalty for any capacity overload.{" "}
+            {timeOnly ? "Cost = travel time in minutes" : `Cost = the weighted blend (${describeWeights(problem.cost_weights)})`} plus a heavy penalty for any capacity overload.{" "}
             {result.algorithm === "route_search"
               ? "The curve starts at the nearest-neighbour plan, drops when the local search runs, then falls as the iterated search finds better plans. There is no separate polish."
               : `The curve is the algorithm's own result, before the polish${result.warm_start ? "; it starts from a nearest-neighbour route, so it begins low" : ""}.`}

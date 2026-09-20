@@ -72,6 +72,13 @@ export interface PlaceSearchResult {
 export type Algorithm = "qpso" | "pso" | "ga" | "nearest_neighbor" | "route_search";
 export type CongestionMode = "random" | "rush_hour" | "clear" | "live" | "snapshot";
 
+/** What to minimize: time (minutes driven), distance (km) and congestion (minutes lost to jams). Only the ratios matter. */
+export interface CostWeights {
+  time: number;
+  distance: number;
+  congestion: number;
+}
+
 export interface ProblemSpec {
   graph_id: string;
   depot?: number | null;
@@ -80,6 +87,7 @@ export interface ProblemSpec {
   demands?: Record<string, number> | null;
   n_vehicles?: number | null;
   vehicle_capacity?: number;
+  cost_weights?: CostWeights;
   seed?: number | null;
 }
 
@@ -108,6 +116,7 @@ export interface RouteOut {
   load: number;
   time_min: number;
   distance_km: number;
+  delay_min: number; // of time_min, the minutes lost to congestion compared with free flow
 }
 
 export interface ResolvedProblem {
@@ -116,6 +125,7 @@ export interface ResolvedProblem {
   demands: Record<string, number>;
   n_vehicles: number;
   vehicle_capacity: number;
+  cost_weights: CostWeights;
 }
 
 export interface OptimizeResponse {
@@ -123,12 +133,13 @@ export interface OptimizeResponse {
   algorithm: Algorithm;
   problem: ResolvedProblem;
   routes: RouteOut[];
-  total_time_min: number;
+  total_time_min: number; // real minutes driven, whatever the weights
   total_distance_km: number;
+  total_delay_min: number; // of total_time_min, the minutes lost to congestion
   capacity_violation: number;
   feasible: boolean;
   raw_cost: number;
-  cost: number;
+  cost: number; // the weighted cost that was minimized (plus any overload penalty)
   polished: boolean;
   warm_start: boolean; // the search began with a nearest-neighbour route in its population
   convergence: number[];

@@ -432,3 +432,72 @@ def test_benchmark_multi_vehicle_has_no_exact_baseline():
     assert body["exact_cost"] is None
     assert "held_karp_exact" not in {a["name"] for a in body["algorithms"]}
     assert all(a["raw_gap_pct"] is None for a in body["algorithms"])
+
+
+# ---- cost weights: what to minimize ------------------------------------------------------------------------------------
+
+
+def test_cost_weights_are_validated():
+    graph_id = make_graph()["summary"]["graph_id"]
+    post = lambda weights: client.post("/api/optimize", json={"graph_id": graph_id, "n_stops": 6, **FAST, "cost_weights": weights})  # noqa: E731
+    assert post({"time": -1}).status_code == 422
+    assert post({"time": 0, "distance": 0, "congestion": 0}).status_code == 422
+    assert post({"time": 2000}).status_code == 422
+    assert post({"time": 0, "distance": 1}).status_code == 200  # left-out weights are 0 unless time, which defaults to 1
+
+
+def test_explicit_default_weights_change_nothing():
+    graph_id = make_graph()["summary"]["graph_id"]
+    plain = solve(graph_id, n_stops=8, seed=3)
+    explicit = solve(graph_id, n_stops=8, seed=3, cost_weights={"time": 1, "distance": 0, "congestion": 0})
+    assert plain["cost"] == explicit["cost"] and plain["total_time_min"] == explicit["total_time_min"]
+    assert plain["problem"]["cost_weights"] == {"time": 1.0, "distance": 0.0, "congestion": 0.0}
+
+
+def test_a_weighted_plan_reports_real_minutes_kilometres_and_delay_and_echoes_the_weights():
+    graph_id = make_graph()["summary"]["graph_id"]
+    weights = {"time": 0.2, "distance": 0.5, "congestion": 0.3}
+
+    out = solve(graph_id, n_stops=10, cost_weights=weights)
+
+    assert out["problem"]["cost_weights"] == weights
+    routes = out["routes"]
+    assert out["total_time_min"] == pytest.approx(sum(r["time_min"] for r in routes))
+    assert out["total_distance_km"] == pytest.approx(sum(r["distance_km"] for r in routes))
+    assert out["total_delay_min"] == pytest.approx(sum(r["delay_min"] for r in routes))
+    assert 0 < out["total_delay_min"] <= out["total_time_min"]  # the random traffic slows some road, never below free flow
+    # the optimizer's cost is the same blend of the plan's real quantities (this plan overloads nothing)
+    assert out["feasible"]
+    assert out["cost"] == pytest.approx(0.2 * out["total_time_min"] + 0.5 * out["total_distance_km"] + 0.3 * out["total_delay_min"])
+
+    # re-solving with the echoed problem reproduces it, as the UI does after a traffic change
+    problem = out["problem"]
+    again = solve(
+        graph_id, depot=problem["depot"], stops=problem["stops"], demands=problem["demands"], n_vehicles=problem["n_vehicles"],
+        vehicle_capacity=problem["vehicle_capacity"], cost_weights=problem["cost_weights"],
+    )
+    assert again["cost"] == out["cost"]
+
+
+def test_weighting_distance_gives_a_shorter_plan_and_weighting_time_a_quicker_one():
+    graph_id = make_graph()["summary"]["graph_id"]
+    same = dict(n_stops=6, n_vehicles=1, vehicle_capacity=1000, algorithm="route_search", time_limit_sec=2, seed=1)
+    quickest = solve(graph_id, **same)
+    shortest = solve(graph_id, **same, cost_weights={"time": 0, "distance": 1})
+
+    assert shortest["problem"]["stops"] == quickest["problem"]["stops"]
+    assert shortest["total_distance_km"] <= quickest["total_distance_km"] + 1e-6
+    assert quickest["total_time_min"] <= shortest["total_time_min"] + 1e-6
+
+
+def test_benchmark_uses_the_weights_and_the_exact_optimum_follows_them():
+    graph_id = make_graph()["summary"]["graph_id"]
+
+    body = client.post(
+        "/api/benchmark", json={"graph_id": graph_id, "n_stops": 6, "n_vehicles": 1, "cost_weights": {"time": 0, "distance": 1}, **FAST}
+    ).json()
+
+    assert body["problem"]["cost_weights"] == {"time": 0.0, "distance": 1.0, "congestion": 0.0}
+    assert body["exact_cost"] is not None
+    for algo in body["algorithms"]:
+        assert algo["raw_gap_pct"] >= -1e-6  # nothing beats the exact optimum of the same blend

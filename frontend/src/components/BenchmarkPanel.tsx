@@ -1,6 +1,6 @@
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { BenchmarkResponse } from "../api/types";
-import { ALGORITHM_COLORS, ALGORITHM_LABELS, fmt } from "../lib/helpers";
+import { ALGORITHM_COLORS, ALGORITHM_LABELS, describeWeights, fmt, isTimeOnly } from "../lib/helpers";
 import ConvergenceChart from "./ConvergenceChart";
 import TrafficBadge from "./TrafficBadge";
 
@@ -10,6 +10,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
   }
 
   const { algorithms } = benchmark;
+  const timeOnly = isTimeOnly(benchmark.problem.cost_weights);
   // The route search has no separate polish: its raw cost is its whole result. So when it is in the table the fair
   // comparison is each row's final cost (after the polish, where there is one), and that is what gets highlighted.
   const hasSearch = algorithms.some((a) => a.name === "route_search");
@@ -38,7 +39,9 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
               <tr>
                 <th>Algorithm</th>
                 <th className="num" title="what the algorithm itself found, no local search: travel time plus a heavy penalty for any capacity overload">Raw cost</th>
-                <th className="num" title="travel time of the raw result, without the penalty">Travel (min)</th>
+                <th className="num" title={timeOnly ? "travel time of the raw result, without the penalty" : "the raw result's weighted cost, without the overload penalty"}>
+                  {timeOnly ? "Travel (min)" : "Route cost"}
+                </th>
                 <th className="num" title="total capacity overload of the raw result">Overload</th>
                 {hasGaps && <th className="num">Gap to optimum</th>}
                 <th className="num" title="the same result after the polish: 2-opt inside each route, then moving stops between vans">+ Polish cost</th>
@@ -66,6 +69,7 @@ export default function BenchmarkPanel({ benchmark }: { benchmark: BenchmarkResp
           </table>
           <p className="hint">
             {benchmark.n_stops} stops, {benchmark.problem.n_vehicles} vehicle{benchmark.problem.n_vehicles === 1 ? "" : "s"}.
+            {!timeOnly && ` Costs are the weighted blend (${describeWeights(benchmark.problem.cost_weights)}), not minutes.`}
             {benchmark.exact_cost === null ? " No exact optimum is computed for multi-vehicle or larger problems." : ` Exact optimum: ${fmt(benchmark.exact_cost)}.`} Lower is better. The
             raw column is the like-for-like algorithm comparison; the polish helps every method and narrows the differences.
             {benchmark.warm_start

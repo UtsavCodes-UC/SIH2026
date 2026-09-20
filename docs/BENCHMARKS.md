@@ -1,6 +1,6 @@
 # Benchmark results
 
-## Read this first — current headline (Findings 7-15)
+## Read this first — current headline (Findings 7-16)
 
 The problem statement's core claim is that QPSO gives "stronger global
 search, faster convergence, and a better balance between exploration and
@@ -85,6 +85,11 @@ The search is now an option in the app (the default is unchanged: QPSO with warm
 the two at the sizes the app is used at, 15-100 stops on synthetic road graphs: the route search is cheaper by about 3% at
 15 stops and by 6-10% from 30 stops up, on every instance from 30 stops, and one second of it is already ahead of the
 default. Which one is the default is a product decision; the benchmark says the option is the better plan-finder.
+
+Finding 16 covers the objective. The optimizer can now minimize a weighted blend of travel time, distance and congestion
+delay (the default is time alone, unchanged), and the results report real minutes, kilometres and delay. Weighting
+distance alone saves about 6-7% of the kilometres at the price of 13-15% more minutes and roughly 60% more congestion delay;
+half weight on congestion cuts the delay by 6-8% for about 1% more minutes.
 
 Findings 1-6 below are the original tuning log. **They were measured on the
 polished metric with a 2-opt that had a bug (Finding 8), so their polished
@@ -903,6 +908,80 @@ Reproduce (from `backend/`; the CSV is in `results/app_options/`):
 ```
 python scripts/app_options_comparison.py --csv results/app_options/route_search_vs_default.csv
 python scripts/app_options_comparison.py --from-csv results/app_options/route_search_vs_default.csv
+```
+
+## Finding 16 — the cost weights do what they say, and show what each measure costs in the others
+
+**The question.** The problem statement asks to minimize travel time, distance **and** traffic congestion. The app now lets
+the user choose the blend (`cost_weights`; math in MATH_FORMULATION.md, section 2). Does a different blend actually produce a
+different plan, and what does optimizing one measure cost in the other two?
+
+**What was built.** Each road segment costs `time x minutes driven + distance x km + congestion x minutes lost to
+congestion`, where the last is how much longer the segment takes than in free flow (0 on a free road). Legs between stops are
+cheapest paths under that cost, so every algorithm (QPSO, PSO, GA, route search, exact Held-Karp) minimizes the chosen blend
+with no change to the algorithm. The default, time alone, reproduces every earlier result. Results always report the real
+minutes, kilometres and congestion delay, whatever was optimized (`core/cost_model.py`).
+
+**Correctness checks** (`tests/test_cost_model.py`, 20 tests). On a hand-built network with a short jammed road and a longer
+free one, each weighting picks the road it should. On random 7-stop problems the exact solver, which finds the true optimum
+of each blend, produces a distance-optimal plan that drives no more kilometres than the time-optimal plan, a time-optimal plan
+no slower than the others, and a congestion-optimal plan with no more delay, asserted exactly (this is a theorem for an exact
+solver, not a tendency). Leg costs keep the triangle inequality; the default weights give exactly the old leg times.
+
+**Experiment** (`scripts/cost_weights_tradeoff.py`). Four settings, the same problems solved for each, every finished plan
+measured in real minutes, kilometres and delay. The problems are those of Finding 15: the app's synthetic road network with
+random congestion (each road independently 0.8x to 2.5x slower than free flow), random stops and demands, fleet for about
+85% utilisation, 20 instances at each of 30 and 60 stops. Two solvers through the API's own `solve()`: the app default (QPSO,
+warm start, polish) and the route search (3 s). Mean of each quantity over the instances; in brackets the mean of the
+per-instance change from the "fastest" plan (negative = less).
+
+App default (QPSO + polish):
+
+| optimized for | 30 stops: minutes | km | delay | 60 stops: minutes | km | delay |
+|---|---|---|---|---|---|---|
+| Fastest (time only) | 203.2 | 99.2 | 57.9 | 331.4 | 164.4 | 91.6 |
+| Shortest (distance only) | 230.2 (+13.5%) | 92.4 (-6.9%) | 93.0 (+62.8%) | 378.5 (+14.3%) | 153.3 (-6.7%) | 151.5 (+67.0%) |
+| Avoid jams (time 50%, congestion 50%) | 205.0 (+1.2%) | 103.3 (+4.4%) | 54.0 (-6.1%) | 336.4 (+1.5%) | 172.7 (+5.2%) | 84.7 (-7.6%) |
+| Balanced (time 40%, distance 30%, congestion 30%) | 202.5 (-0.2%) | 99.4 (+0.2%) | 56.9 (-1.1%) | 330.1 (-0.4%) | 164.2 (-0.2%) | 90.6 (-0.9%) |
+
+Route search:
+
+| optimized for | 30 stops: minutes | km | delay | 60 stops: minutes | km | delay |
+|---|---|---|---|---|---|---|
+| Fastest (time only) | 188.4 | 91.6 | 54.4 | 301.8 | 149.2 | 84.1 |
+| Shortest (distance only) | 214.1 (+13.5%) | 86.3 (-5.9%) | 86.0 (+59.2%) | 346.0 (+14.7%) | 140.1 (-6.1%) | 138.4 (+66.1%) |
+| Avoid jams (time 50%, congestion 50%) | 189.9 (+0.8%) | 96.0 (+4.9%) | 49.9 (-8.4%) | 304.5 (+0.9%) | 156.0 (+4.7%) | 77.2 (-8.4%) |
+| Balanced (time 40%, distance 30%, congestion 30%) | 188.9 (+0.2%) | 92.5 (+0.9%) | 53.5 (-1.6%) | 302.8 (+0.3%) | 150.4 (+0.8%) | 83.4 (-0.9%) |
+
+**What this shows.**
+
+- **The weights work.** In 20 of 20 instances at 30 stops and 20 of 20 at 60, the route search's "shortest" plan
+  drives the fewest kilometres of the four (default solver: 16 of 20 and 16 of 20), and its "avoid jams" plan has the least
+  congestion delay in 20 of 20 and 20 of 20 (default solver: 15 of 20 and 19 of 20; in the others a different blend
+  happened to do slightly better, which a heuristic allows).
+- **Shortest is expensive on a congested network.** Minimizing kilometres alone saves about 6-7% of the distance but costs
+  13-15% more minutes and raises the congestion delay by 59-67%: the shortest roads are the jammed ones.
+- **Avoiding jams is cheap.** Half weight on congestion cuts the delay by 6-8% (route search 8%) for about 1% more minutes
+  and 4-5% more kilometres.
+- **"Balanced" is nearly the same plan as "fastest".** Time already includes the delay, so blending in a little distance and
+  congestion moves each measure by less than 2%. The weights matter most at the extremes.
+
+**What this supports, and what it does not.**
+
+- Supported: the blend is a real control; each measure improves when it is weighted, at a cost in the others that the results
+  panel shows in real units.
+- The numbers depend on the network and on the units: a kilometre and a minute are different things, and the presets are
+  arbitrary blends, so read them as an illustration of the trade-off, not as recommended settings. On a network at free flow
+  congestion has nothing to avoid (the UI says so).
+- Not tested: real OpenStreetMap cities or live traffic (congestion here is random per road), more than 60 stops, other
+  blends. Both solvers are heuristics, so the exact-optimum guarantee above holds for the unit test, not for these runs; 20
+  instances per size, one algorithm seed per instance. No plan in this experiment overloaded a van.
+
+Reproduce (from `backend/`; the CSV is in `results/cost_weights/`):
+
+```
+python scripts/cost_weights_tradeoff.py --csv results/cost_weights/tradeoff.csv
+python scripts/cost_weights_tradeoff.py --from-csv results/cost_weights/tradeoff.csv
 ```
 
 ## Finding 1 — hyperparameter tuning (small instances, exact ground truth)

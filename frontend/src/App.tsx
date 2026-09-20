@@ -25,7 +25,7 @@ import BenchmarkPanel from "./components/BenchmarkPanel";
 import MapView, { type SelectMode } from "./components/MapView";
 import ResultsPanel from "./components/ResultsPanel";
 import Sidebar from "./components/Sidebar";
-import { centralNode, sample } from "./lib/helpers";
+import { centralNode, normalizedWeights, sample } from "./lib/helpers";
 import { type Busy, DEFAULT_PARAMS, type SolverParams } from "./lib/params";
 
 const BUSY_LABEL: Record<Exclude<Busy, null>, string> = {
@@ -111,6 +111,7 @@ export default function App() {
       demands: covered ? demands : undefined,
       n_vehicles: params.nVehicles,
       vehicle_capacity: params.capacity,
+      cost_weights: normalizedWeights(params.weights),
       seed: params.seed,
     };
   }
