@@ -1,249 +1,104 @@
-# QuantumRoute — Quantum-inspired route optimizer
+# QuantumRoute
 
-*Smart India Hackathon 2026, problem SIH26137: Quantum-Inspired Intelligent Traffic Route Optimization.*
+**A quantum-inspired route optimizer for delivery fleets.** It plans routes for several vans on real city roads, and re-plans when traffic changes or a road closes.
 
-A quantum-inspired metaheuristic (**QPSO**, Quantum Particle Swarm Optimization) that plans
-capacitated multi-vehicle routes over a weighted road graph with live, changeable traffic,
-benchmarked against classical PSO, a genetic algorithm, a nearest-neighbour heuristic and an
-exact solver. Includes a REST API and a map UI, on synthetic networks or real OpenStreetMap cities.
-The problem, the cost function and each algorithm are written out in [docs/MATH_FORMULATION.md](docs/MATH_FORMULATION.md).
+Built for Smart India Hackathon 2026, problem SIH26137: *Quantum-Inspired Intelligent Traffic Route Optimization in Transportation Systems Using Metaheuristic Optimization* (problem set by Egreen Quanta).
 
-**Read [docs/BENCHMARKS.md](docs/BENCHMARKS.md) before quoting any performance number.** In short:
-QPSO is a much stronger optimizer than classical PSO on its own (13-28% cheaper routes, p < 0.02),
-but once both get a 2-opt local search the gap shrinks to +0.5-3.6% and is mostly not significant. With
-several vehicles QPSO's edge over PSO holds at ~20 customers and ties at 50; at 100 a jump size that
-shrinks with problem size wins it back against a random-start PSO, but a genetic algorithm is stronger
-than either from a random start, and what really makes 100 customers work is the pipeline around the
-search: a warm start from a nearest-neighbour route plus a polish that moves stops between vans (40%
-lower cost at 100 customers than before; Finding 10). A hybrid QPSO (elite archive, 2-opt, restarts) lands within
-about 3% of OR-Tools on 100-stop single-vehicle tours, but a hybrid PSO built the same way does exactly as well
-(Finding 11). On the multi-vehicle problem our pipelines are still about 6-9% above OR-Tools' 60 s solution, and
-an optimal split decoder closes only about 1% of that (Finding 12; the OR-Tools references were corrected, see there).
-What does close it is a stronger search between vans (2-opt\*, SWAP\*, neighbour lists, iterated local search): 2.6% below the
-OR-Tools 60 s solution in about 10 s on 100 customers, and starting it from a QPSO, PSO or GA adds nothing (Finding 13).
-On the standard CVRPLIB instances with proven optima (100-199 customers) it averages 2.9% above optimal after 10 s and
-1.5% after two minutes, against 5.5% for OR-Tools and 10.2% for the app's earlier default (Finding 14); it is not a
-state-of-the-art solver. Where the true optimum can be computed (10-14 stops with several vans, checked by a new exact solver),
-the app's default pipeline is on average 1.5-3.6% above it and the route search option is exactly optimal on all 150 instances
-tested (Finding 20). Do not read this as "QPSO scales best".
+**Live demo:** https://quantum-inspired-route-optimizer.onrender.com
+(free hosting: the first visit can take about a minute to wake up, and only the four ready-made cities load there. Run it with Docker for everything.)
+
+![QuantumRoute on MG Road, Bengaluru, with recorded TomTom traffic](docs/images/quantumroute-overview.jpg)
+
+## What it does
+
+- Plans routes for a fleet with van capacity and optional time windows, on a real OpenStreetMap road network (four ready-made Indian cities, or any place) or a synthetic city.
+- Lets traffic change the plan: live TomTom readings, a recorded replay, simulated rush hour, or a closed road that every solver plans around.
+- Minimizes travel time, distance, congestion delay, or a blend of the three.
+- Solves with **QPSO**, the quantum-inspired core, next to PSO, a genetic algorithm, nearest neighbour and a route-search option. Also finds the shortest path between two places.
+- Shows the routes on a map, a per-van table, the convergence curve and a side-by-side benchmark.
+
+## Deliverables
+
+Everything the problem statement's delivery table asks for is in this repository and running.
+
+| Expected deliverable | What is here | Where |
+|---|---|---|
+| **1. Graph-based network model** | A directed weighted graph: intersections are nodes, roads are arcs with travel time, distance and congestion. Weights update from live, recorded or simulated traffic and from closed roads. | `backend/app/core/graph_model.py`, `traffic.py`, `live_traffic.py` |
+| **2. Mathematical formulation** | Objective, capacity, time-window and flow constraints, decision variables, and every algorithm, written out. | [docs/MATH_FORMULATION.md](docs/MATH_FORMULATION.md) |
+| **3. Quantum-inspired algorithm module** | QPSO with random-key route encoding, a sampled (velocity-free) update around an attractor, and an annealed contraction-expansion step. Plus a warm start and a polish. | `backend/app/core/qpso.py`, `vrp_formulation.py` |
+| **4. Software platform** | A React map interface and a FastAPI REST API. Input a network and traffic, get optimized routes drawn on the map. | `frontend/`, `backend/app/api/` |
+| **5. Demonstration** | Four real Indian cities (Delhi, Noida, Bengaluru, Mumbai), recorded and live TomTom traffic, a public site and a scripted demo. | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) |
+
+The "expected solution" also asks for constraint handling, convergence analysis and systematic benchmarking:
+capacity, time windows and closed roads are enforced and unreachable stops are reported; every run draws its convergence curve;
+and the benchmarks (20 written findings, every result file in `backend/results/`) are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
+## Results
+
+| Test | Result |
+|---|---|
+| QPSO vs classical PSO, 20 to 50 stops, raw output | 13.6 to 28.1% cheaper routes; QPSO wins 21 to 30 of 30 instances in every setting |
+| 150 small problems with a computed exact optimum (route-search option) | optimal on 150 of 150 |
+| 22 standard CVRPLIB instances, 100 to 199 customers (route-search option) | 2.9% above the proven optimum after 10 s, 1.5% after 2 min; OR-Tools after 60 s: 5.5% |
+| Shortest path, Dijkstra as the exact reference | QPSO, PSO and GA find the exact route on 78 to 90% of pairs on a 40-intersection map |
+
+We say where QPSO does not win. After the same local search, QPSO, PSO and the genetic algorithm end within about 1 to 3% of one another,
+and the default QPSO pipeline averaged 10.2% above optimal on the 100 to 199 customer instances, which is why the route-search option exists.
+The full write-up with every caveat: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Run it
 
-Needs Python 3.11 and Node 20+. From the repo root:
-
-```bash
-# backend (API on :8000)
-cd backend
-python -m venv .venv
-source .venv/Scripts/activate          # Windows Git Bash; on macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt        # pins numpy 1.26.4 / networkx 3.3; results are reproducible only with these
-python -m uvicorn app.main:app --port 8000
-
-# frontend, in a second terminal (dev server on :5173, proxies /api to the backend)
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:5173. For a single-process deployment, run `npm run build` in `frontend/`:
-the backend then serves the built UI itself at http://localhost:8000.
-
-Real cities download from OpenStreetMap on first use (1-2 minutes) and are cached under
-`backend/data/cache/`. The four preset places already ship in `backend/data/presets/` and load at once; to pre-download other
-places so a demo works offline:
-
-```bash
-cd backend && python scripts/warm_city_cache.py
-```
-
-### With Docker
-
-One container serves the API and the built UI on one port; nothing else needs installing. From the repo root:
+**With Docker** (nothing else to install):
 
 ```bash
 docker compose up --build
 ```
 
-Open http://localhost:8000. If that port is taken (for example by a local `uvicorn`), pick another one:
-`PORT=8080 docker compose up --build` (PowerShell: `$env:PORT=8080; docker compose up --build`).
+Open http://localhost:8000. If that port is taken: `PORT=8080 docker compose up --build`.
 
-- **After pulling new code** (UI or backend), rebuild and restart with `docker compose up -d --build`. The image is layered so
-  the dependency installs are cached: a UI-only change rebuilds in seconds, and only a change to `requirements.txt` or
-  `package-lock.json` reinstalls packages.
-- **Live traffic:** put `TOMTOM_API_KEY=...` in `backend/.env` (optional). The key is passed in when the container starts;
-  it is never copied into the image, and `.dockerignore` keeps `.env` out of the build.
-- **Maps and recorded traffic** stay on your disk: `backend/data/cache/` and `backend/data/traffic_snapshots/` are mounted
-  into the container, so they survive rebuilds and a demo prepared online (warmed cities, a saved snapshot) works offline.
-  On Linux, create the two folders first (`mkdir -p backend/data/cache backend/data/traffic_snapshots`) so they belong to you.
-- The four preset cities are bundled in `backend/data/presets/` at 1200 m and 2000 m (map data © OpenStreetMap contributors, ODbL), so a fresh
-  container loads them at once with no download and no warmed cache, and any radius up to 2000 m for a preset is cut from the 2000 m map
-  without the internet. Other places or bigger radii are downloaded, trying four public Overpass servers in turn and naming each failure.
-- The container listens on `$PORT` when a host sets one (default 8000), so the same image runs on Google Cloud Run and similar hosts.
-  How to put it on the public internet for free: [docs/DEPLOY.md](docs/DEPLOY.md).
-- The container runs a single worker on purpose: loaded maps and their traffic live in that process's memory.
-- Tests inside the image: `docker compose run --rm app python -m pytest tests -q`.
-- Stop and remove it with `docker compose down`. For UI development keep using `npm run dev` as above.
+**Without Docker** (Python 3.11 and Node 20+):
 
-## Using the UI
+```bash
+cd backend
+python -m venv .venv && source .venv/Scripts/activate    # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn app.main:app --port 8000
+```
 
-The **Guide** button at the top of the sidebar opens a plain-language walkthrough of every control, with screenshots. Its images
-are in `frontend/public/guide/`; after changing the UI, regenerate them with the app running:
-`cd frontend && BASE=http://127.0.0.1:8000 npm run guide:screenshots` (needs Node 22+ and Google Chrome; see the top of
-`frontend/scripts/capture-guide.mjs`).
+```bash
+cd frontend
+npm install && npm run dev                                 # http://localhost:5173
+```
 
-1. **Road network** — generate a synthetic network, or load a real place: pick one of the four presets,
-   or choose *Search for another place…* and start typing: suggestions appear as you type (arrow keys +
-   Enter, or click), so the spelling is right and the map lands exactly on the spot you picked. Enter
-   without picking searches for exactly what you typed. A place you loaded once is remembered and
-   suggested again later, even without the internet.
-2. **Delivery problem** — draw random stops, or click the map ("set depot" / "toggle stops");
-   set the fleet size (blank = auto) and vehicle capacity. Tick *Time windows (demo)* to give every stop a
-   window (the earliest and latest minute a van may serve it, counted from when the vans leave the depot) and a
-   service time: vans that arrive early wait, late arrivals are charged per minute, and the results show each
-   stop's arrival against its window. Windows work with QPSO, PSO, GA and nearest neighbour; the route search
-   cannot handle them yet.
-3. **Solver** — first choose *what to minimize*: travel time (the default), distance, congestion delay (the
-   minutes lost to jams compared with free flow), or a blend, with the presets *Fastest / Shortest / Avoid jams /
-   Balanced* or the three sliders; results always show the real minutes, kilometres and delay, and *Weighted cost*
-   when the blend is not plain time. Then pick QPSO / PSO / GA / nearest neighbour and press *Optimize routes*: routes are drawn
-   along the roads, numbered by visiting order, with per-vehicle load, time and distance and the
-   search's convergence curve. *Benchmark* runs every algorithm on the same problem. Two options are on
-   by default: *Warm start* (the search begins with a nearest-neighbour route in its population; needed
-   from about 50 stops, and switch it off to watch the algorithms compete from scratch) and *Polish
-   routes* (2-opt inside each route, then moving stops between vans). Up to 150 stops.
+Live traffic is optional: put `TOMTOM_API_KEY=...` in `backend/.env`. Without it the recorded MG Road traffic still works. Tests: `cd backend && python -m pytest tests -q` (431 tests).
 
-   **Route search** is an extra option in the list; the default stays QPSO with warm start and polish.
-   It starts from a nearest-neighbour plan and keeps moving, swapping and re-inserting stops between vans
-   until its time limit (10 s by default; a small problem that stops improving finishes sooner). It uses no
-   swarm and has no separate polish. It is built for several vans (with one van it is slow and says so), and
-   *Benchmark* adds it to the comparison when it is the selected algorithm. Its evidence is in
-   docs/BENCHMARKS.md, Findings 13-15.
-4. **Traffic** — free flow / random / rush hour repaints the roads and (optionally) re-plans
-   automatically, so you can watch routes detour around a jam. On a real city, *Fetch live traffic*
-   loads real TomTom readings instead (see below). A badge on the map and on every result always says
-   where the congestion came from: LIVE, RECORDED, SIMULATED or FREE FLOW.
+## Try it in two minutes
 
-   **Road closures (what-if).** Press *block road* in the map toolbar and click a road to close it (it turns red with a
-   cross); click a closed road to reopen it, or press *Reopen all*. Closed roads are removed from the network, so every plan
-   and every route goes around them. With *Re-optimize automatically* ticked, the plan and the A-to-B route are recomputed at
-   once and a banner says what the closures cost against the same plan with every road open (minutes and kilometres). Close all
-   the roads around an intersection and it is marked as cut off; a stop there cannot be served, and the API says which stops
-   are affected. The search is heuristic, so the "cost" of a closure can come out slightly negative; the banner says so when it
-   happens (docs/BENCHMARKS.md, Finding 19).
-5. **Shortest path** — the quickest route between two places. Press *set A* and *set B* in the map toolbar and click
-   the map, pick a method, then *Find route* (or *Compare all four*). **Dijkstra** is exact and takes
-   milliseconds; **QPSO**, **classical PSO** and a **genetic algorithm** search for the same route with
-   particles, so they can end above the optimum and are several hundred times slower. The same *What to
-   minimize* choice applies (time, distance, congestion or a blend), the result shows real minutes, kilometres
-   and delay, and the table reports how far above the exact optimum each method ended, with the search progress
-   next to the exact line. Evidence: docs/BENCHMARKS.md, Finding 18.
+1. **Road network**: open the *Real city* tab, choose *MG Road, Bengaluru*, press *Load road network*.
+2. **Optimize routes**: routes appear on the map with each van's load, time and delay.
+3. **Traffic**: under *Recorded traffic* press *Replay*. The same stops now take about twice as long, and the plan changes.
+4. **Block a road**: press *block road* on the map toolbar and click a road the plan uses. A banner shows what the closure cost.
+5. **Guide**: the button at the top of the sidebar explains every control, with screenshots.
 
-## Place suggestions
+## Documentation
 
-The suggestions come from [Photon](https://photon.komoot.io), a search-as-you-type service built on
-OpenStreetMap data (© OpenStreetMap contributors). OpenStreetMap's own Nominatim server is used only for
-the final exact lookup, because its usage policy forbids auto-complete requests. What you type is sent
-to Photon after a 300 ms pause and cached for an hour; it is a free shared service, so for heavy use
-run your own Photon and set `PLACE_SEARCH_URL` in `backend/.env`, or set it to `off` to keep only the
-ready-made and remembered places. If Photon is unreachable the box still lists those places, says so,
-and Enter still searches for what you typed. When a real city is loaded, results near it rank first
-(a typo like "indiranagr" finds Bengaluru's Indiranagar before other cities'), without hiding places
-elsewhere.
-
-## Live traffic (TomTom)
-
-The Real city tab can use real congestion instead of simulated. The backend samples about 80 roads
-across the map, asks TomTom's *Traffic Flow* API for each road's current and free-flow speed, turns
-each into a slowdown factor, applies it to every road along the reported segment, and estimates the
-roads nobody measured from their measured neighbours (same road class counts most). Measured on MG
-Road, Bengaluru: 541 of 1,223 roads got a direct reading, and the fetch took about 24 seconds.
-
-**One-time setup** (free, no credit card):
-
-1. Create an account at https://developer.tomtom.com and open *Keys → Create key*.
-2. Under *Self-service APIs* tick **Traffic API** and **Traffic Flow API** (add **Traffic Incidents API**
-   if you later want road closures). Leave the Orbis and map-tile products unticked.
-3. Leave **Domain whitelisting OFF**. The backend calls TomTom server-to-server, which sends no browser
-   Referer header, so a whitelisted key is rejected with HTTP 403.
-4. Copy `backend/.env.example` to `backend/.env` and set `TOMTOM_API_KEY=...`. It is read on every
-   request, so no restart is needed. `.env` is git-ignored: never commit a key.
-5. Check it: `cd backend && python scripts/check_tomtom.py` (one request; never prints the key).
-
-**Demo without depending on the internet.** Live means "right now", which may not be rush hour. Fetch
-at a busy time, press *Save snapshot*, and later pick that snapshot and press *Replay*. A replay is
-always labelled RECORDED with its original timestamp, never LIVE. Snapshots live in
-`backend/data/traffic_snapshots/` (git-ignored, tied to the exact downloaded map); check TomTom's terms
-before redistributing them.
-
-**Limits to know about.** The free plan allows 2,500 non-tile requests a day and one refresh spends
-about 80, so presses within 5 minutes reuse the last reading (`LIVE_TRAFFIC_MIN_INTERVAL_SEC`). Roads
-without a reading are estimates, not measurements; the badge reports "N of M roads measured". Traffic
-data © TomTom (the badge carries the credit). Live traffic is refused on synthetic maps, whose roads
-are not real streets.
-
-## API
-
-Interactive docs at http://localhost:8000/docs.
-
-| Endpoint | Purpose |
+| | |
 |---|---|
-| `POST /api/graph/synthetic` · `POST /api/graph/city` | create a network (a city from `place` or `lat`/`lon` + `radius_m`); returns nodes, roads and a `graph_id`. An unknown place is a 422 with advice, a failed lookup a 503 |
-| `GET /api/graph/presets` · `GET /api/graph/{id}` | ready-made places · read a network back |
-| `GET /api/config` | where the server runs; on a free demo host (Render) it reports the map limits the interface then explains |
-| `GET /api/graph/places?q=` | place-name suggestions (optional `lat`/`lon` to prefer results near a map): presets and remembered places first, then Photon |
-| `POST /api/graph/{id}/congestion` | `random` / `rush_hour` / `clear` (simulated), `live` (TomTom, real cities), `snapshot` (replay a recording): the dynamic weight update |
-| `PUT /api/graph/{id}/closures` | block roads: body `{"roads": [[u, v], ...]}` is the complete set of closed roads (each named by its two intersections; both directions close), so a road left out reopens and `[]` reopens everything. The returned view lists `closed` roads and the `cut_off` intersections. A stop that the closures cut off is a 422 naming it |
-| `GET /api/traffic/status` | whether a TomTom key is configured (never returns the key) |
-| `GET` · `POST /api/graph/{id}/traffic/snapshots` | list recorded traffic for a map · record the current real traffic |
-| `POST /api/optimize` | solve one problem; routes come back as polylines along the roads. `algorithm` is `qpso` (default), `pso`, `ga`, `nearest_neighbor` or `route_search`; the last takes `time_limit_sec` (1-60, default 10) and ignores the swarm settings and `polish` |
-| `POST /api/benchmark` | run every algorithm on one problem (raw and 2-opt-polished costs); `include_route_search: true` adds the route search (with `time_limit_sec`) |
-| `POST /api/shortest-path` | the quickest route between two intersections (`source`, `target`). `algorithms` is a list of `dijkstra` (default, exact), `qpso`, `pso`, `ga`; Dijkstra is always computed as the reference, every result carries its `gap_pct` above the exact cost, its road polyline, real minutes/km/delay and (for the searches) a convergence curve. The searches take `n_particles`, `n_iterations`, `warm_start` and `seed` |
+| [docs/MATH_FORMULATION.md](docs/MATH_FORMULATION.md) | the problem, the cost function, each algorithm |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | every experiment, its numbers and its caveats |
+| [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | the scripted demo, with what to say and what to expect |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | using each control, live-traffic setup, REST API, Docker details, repository layout |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | putting it online for free |
 
-Both solve endpoints take `cost_weights` (`{"time": 1, "distance": 0, "congestion": 0}` by default, all non-negative,
-not all zero, only the ratios matter). `POST /api/optimize` returns `total_time_min`, `total_distance_km` and
-`total_delay_min` in real units, and `cost` as the weighted cost that was minimized.
-
-Soft time windows: `time_windows` (`{"<stop id>": {"earliest": 30, "latest": 60}}`, minutes after the vans leave the
-depot), or `random_windows: true` for demo windows drawn from `seed`, plus `service_time_min` and `time_window_penalty`
-(cost per minute late, default 10). The response gives each route's `schedule` (arrival, waiting and lateness per
-stop) and `total_late_min`, `total_wait_min`, `late_stops`; the resolved windows are echoed back so a plan can be
-re-solved. `route_search` and the exact baseline do not support windows (a 422 and a skipped row respectively).
-
-Anything left out of a problem (depot, stops, demands, fleet size) is filled in from `seed` and
-echoed back in the response, so the same problem can be re-solved after the traffic changes.
-
-Both solve endpoints return `warnings` for problems that cannot be planned cleanly: total demand above the fleet's capacity,
-any single stop whose demand is larger than one vehicle's capacity (it is named, with its demand), and windows that close
-before a van could get there.
-
-## Repo layout
+## Project layout
 
 ```
-backend/
-  app/core/        graph model, VRP formulation + decoder, QPSO, hybrid_swarm, route_search, baselines/, 2-opt, traffic, live_traffic, benchmark
-  app/data/        synthetic graph generator, OSMnx city loader (with disk cache), TomTom adapter, place-name suggestions, CVRPLIB benchmark adapter
-  app/services/    graph store, problem builder, solver dispatch, map/route views, live traffic, snapshots
-  app/api/         FastAPI routers          app/schemas/   request/response models
-  scripts/         benchmark CLIs (compare_qpso_vs_pso.py, scale_experiments.py, hybrid_experiments.py, decoder_analysis.py, ortools_reference.py, route_search_experiments.py, route_search_ablation.py, cvrplib_benchmark.py, fetch_cvrplib.py, app_options_comparison.py, cost_weights_tradeoff.py, time_windows_experiment.py, shortest_path_experiment.py, road_closure_experiment.py, demo_rehearsal.py, ...), check_tomtom.py, warm_city_cache.py
-  tests/           pytest suite (run from backend/: python -m pytest tests/)
-  results/         per-run CSVs behind the numbers in docs/BENCHMARKS.md
-frontend/          React + TypeScript + Leaflet + Recharts map UI
-docs/              MATH_FORMULATION.md (the problem, the cost, each algorithm), BENCHMARKS.md (results and caveats), DEMO_SCRIPT.md (the scripted demo)
-Dockerfile         multi-stage image: builds the UI, then the backend that serves it
-docker-compose.yml one service, one port, maps and snapshots mounted from the host
+backend/    FastAPI app (app/core: graph, QPSO and other solvers, traffic; app/data: OSM and TomTom), scripts/, tests/, results/
+frontend/   React + TypeScript + Leaflet map interface
+docs/       mathematics, benchmarks, demo script, reference, deployment
+Dockerfile  builds the interface and the backend into one image
 ```
 
-## Status
+## Credits
 
-Day 1 (engine, baselines, benchmarking), Day 2 (multi-vehicle capacity model, REST API, OSM loader,
-map UI, live TomTom traffic with recorded snapshots) and the first part of Day 3 (scaling to 100
-customers: warm start, a size-aware QPSO jump, a polish that moves stops between vans) are done.
-The stronger route search (Findings 13-15) is available in the API and the UI as an option, with the
-QPSO pipeline still the default. The hybrid engine and the optimal split decoder (Findings 11-12) are
-built and benchmarked but not wired into the API or the UI.
-Also done: the mathematical-formulation write-up, benchmarks against the standard CVRPLIB instances,
-a cost model that blends time, distance and congestion, soft time windows, and the shortest-path mode
-(Dijkstra, with QPSO / PSO / GA searches measured against it), "block a road" what-ifs with a cost banner, and a
-warning for a stop that no single vehicle can carry.
-A Docker image (`docker compose up --build`) and a scripted demo with a pre-flight check (`docs/DEMO_SCRIPT.md`,
-`backend/scripts/demo_rehearsal.py`) are done too. Still open for Day 3: the slides and the demo video.
+Map data © OpenStreetMap contributors (ODbL). Traffic data © TomTom. Place suggestions from Photon. Route solving and benchmarks are our own code; Google OR-Tools is used only as a reference to compare against.
