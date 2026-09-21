@@ -1,4 +1,6 @@
-# SIH26137 — Quantum-Inspired Intelligent Traffic Route Optimization
+# QuantumRoute — Quantum-inspired route optimizer
+
+*Smart India Hackathon 2026, problem SIH26137: Quantum-Inspired Intelligent Traffic Route Optimization.*
 
 A quantum-inspired metaheuristic (**QPSO**, Quantum Particle Swarm Optimization) that plans
 capacitated multi-vehicle routes over a weighted road graph with live, changeable traffic,
@@ -187,6 +189,7 @@ Interactive docs at http://localhost:8000/docs.
 |---|---|
 | `POST /api/graph/synthetic` · `POST /api/graph/city` | create a network (a city from `place` or `lat`/`lon` + `radius_m`); returns nodes, roads and a `graph_id`. An unknown place is a 422 with advice, a failed lookup a 503 |
 | `GET /api/graph/presets` · `GET /api/graph/{id}` | ready-made places · read a network back |
+| `GET /api/config` | where the server runs; on a free demo host (Render) it reports the map limits the interface then explains |
 | `GET /api/graph/places?q=` | place-name suggestions (optional `lat`/`lon` to prefer results near a map): presets and remembered places first, then Photon |
 | `POST /api/graph/{id}/congestion` | `random` / `rush_hour` / `clear` (simulated), `live` (TomTom, real cities), `snapshot` (replay a recording): the dynamic weight update |
 | `PUT /api/graph/{id}/closures` | block roads: body `{"roads": [[u, v], ...]}` is the complete set of closed roads (each named by its two intersections; both directions close), so a road left out reopens and `[]` reopens everything. The returned view lists `closed` roads and the `cut_off` intersections. A stop that the closures cut off is a 422 naming it |

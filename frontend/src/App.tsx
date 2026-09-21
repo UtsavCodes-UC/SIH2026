@@ -3,6 +3,7 @@ import {
   createCityGraph,
   createSyntheticGraph,
   errorMessage,
+  getDeployment,
   getPresets,
   getTrafficStatus,
   listSnapshots,
@@ -16,6 +17,7 @@ import {
 import type {
   BenchmarkResponse,
   CongestionMode,
+  DeploymentInfo,
   GraphView,
   OptimizeResponse,
   PathAlgorithm,
@@ -60,6 +62,7 @@ export default function App() {
   const [isResizing, setIsResizing] = useState(false);
   const [graph, setGraph] = useState<GraphView | null>(null);
   const [presets, setPresets] = useState<Preset[]>([]);
+  const [deployment, setDeployment] = useState<DeploymentInfo | null>(null);
   const [depot, setDepot] = useState<number | null>(null);
   const [stops, setStops] = useState<number[]>([]);
   const [nStops, setNStops] = useState(15);
@@ -136,6 +139,7 @@ export default function App() {
 
   useEffect(() => {
     getPresets().then(setPresets).catch(() => undefined);
+    getDeployment().then(setDeployment).catch(() => undefined);
     getTrafficStatus().then(setTrafficStatus).catch(() => undefined);
     run("graph", () => createSyntheticGraph({ n_nodes: 80, area_size_km: 8, seed: 1 })).then((view) => view && adoptGraph(view));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -379,6 +383,7 @@ export default function App() {
         onResizeActive={setIsResizing}
         graph={graph}
         presets={presets}
+        deployment={deployment}
         busy={busy}
         depot={depot}
         stops={stops}

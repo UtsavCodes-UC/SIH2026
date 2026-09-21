@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { Algorithm, CongestionMode, GraphView, PathAlgorithm, PlaceSuggestion, Preset, SnapshotInfo, TrafficStatus } from "../api/types";
+import type { Algorithm, CongestionMode, DeploymentInfo, GraphView, PathAlgorithm, PlaceSuggestion, Preset, SnapshotInfo, TrafficStatus } from "../api/types";
 import { ALGORITHM_LABELS, PATH_LABELS, formatCaptured } from "../lib/helpers";
 import type { Busy, SolverParams } from "../lib/params";
 import PlaceSearchBox from "./PlaceSearchBox";
 import AboutPanel from "./AboutPanel";
+import Logo from "./Logo";
 
 interface Props {
   collapsed?: boolean;
@@ -14,6 +15,7 @@ interface Props {
   onResizeActive?: (active: boolean) => void;
   graph: GraphView | null;
   presets: Preset[];
+  deployment: DeploymentInfo | null;
   busy: Busy;
   depot: number | null;
   stops: number[];
@@ -96,7 +98,11 @@ export default function Sidebar(props: Props) {
   const ready = graph !== null && depot !== null && stops.length > 0;
   const searching = presetIndex === presets.length; // the last dropdown entry: type any place
   const typed = customPlace.trim();
-  const canLoad = idle && (searching ? typed.length >= 2 : presets.length > 0);
+  // On a free demo host only the ready-made places load, up to a capped radius (see the note under the Load button).
+  const maxRadius = props.deployment?.max_radius_m ?? null;
+  const overLimit = maxRadius !== null && radius > maxRadius;
+  const otherPlaceBlocked = props.deployment?.presets_only === true && searching;
+  const canLoad = idle && !overLimit && !otherPlaceBlocked && (searching ? typed.length >= 2 : presets.length > 0);
 
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const collapsed = props.collapsed ?? internalCollapsed;
@@ -213,7 +219,11 @@ export default function Sidebar(props: Props) {
                 </svg>
               )}
             </button>
-            <h1>Quantum-inspired route optimizer</h1>
+            <Logo size={34} />
+            <div className="brand-text">
+              <h1>QuantumRoute</h1>
+              <p>Quantum-inspired route optimizer</p>
+            </div>
           </div>
         </header>
 
@@ -352,6 +362,18 @@ export default function Sidebar(props: Props) {
               The ready-made places load at once at any radius up to 2000 m. Any other place, or a bigger radius, is downloaded from OpenStreetMap the
               first time (up to a couple of minutes, longer on a slow server); later loads are instant.
             </p>
+            {props.deployment?.limit_note && (
+              <p className={overLimit || otherPlaceBlocked ? "hosted-note over" : "hosted-note"} role={overLimit || otherPlaceBlocked ? "alert" : undefined}>
+                <strong>
+                  {overLimit
+                    ? `Radius ${radius} m is above this demo's ${maxRadius} m limit.`
+                    : otherPlaceBlocked
+                      ? "Other places can't be loaded on this demo server."
+                      : "Demo server limits."}
+                </strong>{" "}
+                {props.deployment.limit_note}
+              </p>
+            )}
           </>
         )}
 

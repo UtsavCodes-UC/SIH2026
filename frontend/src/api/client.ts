@@ -3,6 +3,7 @@ import type {
   BenchmarkRequest,
   BenchmarkResponse,
   CongestionMode,
+  DeploymentInfo,
   GraphView,
   OptimizeRequest,
   OptimizeResponse,
@@ -35,6 +36,8 @@ export function errorMessage(error: unknown): string {
   }
   return error instanceof Error ? error.message : String(error);
 }
+
+export const getDeployment = () => http.get<DeploymentInfo>("/config").then((r) => r.data);
 
 export const getPresets = () => http.get<Preset[]>("/graph/presets").then((r) => r.data);
 

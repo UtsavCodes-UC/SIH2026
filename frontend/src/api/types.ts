@@ -56,6 +56,14 @@ export interface Preset {
   lon: number;
 }
 
+/** Where the server runs. On a free demo host only the ready-made places load, up to a capped radius, and the interface says it is the hosting's limit. */
+export interface DeploymentInfo {
+  hosted: boolean;
+  max_radius_m: number | null;
+  presets_only: boolean;
+  limit_note: string | null;
+}
+
 /** One entry of the place-search dropdown. `label` is what the box is filled with and the map is named after. */
 export interface PlaceSuggestion {
   title: string;

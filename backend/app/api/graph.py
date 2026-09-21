@@ -12,6 +12,7 @@ from app.data.osm_loader import PRESETS, UnusablePlaceError, city_key, geocode, 
 from app.data.place_search import PhotonPlaceSearch, get_place_search, suggest
 from app.data.synthetic_graph_generator import generate_synthetic_graph, georeference
 from app.data.tomtom import TomTomFlowProvider
+from app.deployment import HOSTED_MAX_RADIUS_M, LIMIT_MESSAGE, is_hosted_demo
 from app.schemas.graph import (
     CityGraphRequest,
     ClosureRequest,
@@ -71,6 +72,10 @@ def create_synthetic(req: SyntheticGraphRequest, store: GraphStore = Depends(get
 @router.post("/city", response_model=GraphView)
 def create_city(req: CityGraphRequest, store: GraphStore = Depends(get_store)) -> GraphView:
     """Real road network from OpenStreetMap (first load needs internet; later loads use the disk cache)."""
+    if is_hosted_demo() and (
+        req.radius_m > HOSTED_MAX_RADIUS_M or req.lat is None or req.lon is None or not is_preset(req.lat, req.lon)
+    ):
+        raise UnusablePlaceError(LIMIT_MESSAGE)  # a live download cannot finish there: say so at once instead of timing out after minutes
     geocoded = req.lat is None or req.lon is None
     if geocoded:
         lat, lon = geocode(req.place)  # unknown name -> 422, lookup failure -> 503

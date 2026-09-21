@@ -123,6 +123,11 @@ export default function AboutPanel({ onClose }: Props) {
                 radius up to 2000 m, even without internet. Any other place, or a bigger radius, is downloaded the first time, which can take a minute or two (longer on a slow
                 server); after that it loads in seconds.
               </p>
+              <p>
+                <strong>On the public demo site</strong> (the free host) only the four ready-made places load, up to 2000 m, because a live download cannot finish there
+                before the host times out. This is a limit of the free hosting, not of the project: run it on your own computer (localhost or Docker) and any place in
+                the world works, up to 4000 m.
+              </p>
             </section>
 
             <section id="guide-problem">

@@ -12,12 +12,13 @@ from app.api import benchmark, graph, optimize, shortest_path, traffic
 from app.core.vrp_formulation import UnreachableStopError
 from app.data.osm_loader import CityLoadError, UnusablePlaceError, warm_presets
 from app.data.tomtom import TrafficProviderError
+from app.deployment import deployment_info
 from app.services.live_traffic_service import TrafficRequestError, TrafficUnavailableError
 from app.services.problem_builder import InvalidProblemError
 from app.services.snapshots import SnapshotNotFound
 
 app = FastAPI(
-    title="SIH26137 — Quantum-Inspired Traffic Route Optimization",
+    title="QuantumRoute — Quantum-inspired route optimizer (SIH26137)",
     version="0.2.0",
 )
 
@@ -69,6 +70,12 @@ api.include_router(traffic.router)
 @api.get("/health")
 def api_health() -> dict:
     return {"status": "ok"}
+
+
+@api.get("/config")
+def config() -> dict:
+    """Where the server runs, so the interface can explain limits that come from the hosting."""
+    return deployment_info()
 
 
 app.include_router(api)

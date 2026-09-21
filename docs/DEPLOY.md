@@ -44,9 +44,15 @@ preset city maps and the recorded MG Road traffic. You do these steps yourself, 
 
 **Changing the radius.** The four preset cities load at once at any radius up to 2000 m, on any host and with no internet: they ship at 1200 m
 and 2000 m, and a smaller radius is cut out of the 2000 m map (measured against a real download: within 0.4% of its intersections and
-0.6% of its roads). Any other place, or a radius above 2000 m, is downloaded from OpenStreetMap, which needs the server to reach one of four
-public Overpass servers. If a host blocks them (a free Render instance could not reach the main one), the error now names each server instead
-of showing a cryptic message, and only those downloads fail. On the free 0.1 CPU a download that does work takes about 2 minutes.
+0.6% of its roads). Any other place, or a radius above 2000 m, is downloaded live from OpenStreetMap, which needs the server to reach one of
+four public Overpass servers.
+
+**What the public Render site does not do, and how it says so.** On the free instance a live download does not finish: a test download of a
+small area (600 m, not a preset) had not answered after 290 seconds, and a radius above 2000 m ended in a time-out. So when the server runs on
+Render (it detects `RENDER=true`, or set `HOSTED_DEMO=1` on any other host) it refuses those requests at once with a message, greys out the
+Load button, and shows a note under it: *"This free demo server can only load the four ready-made places, up to 2000 m radius... This is a
+limit of the hosting, not of the project."* The Guide says the same. On a laptop, in Docker or on any normal server nothing is limited: any
+place works, up to 4000 m (`HOSTED_DEMO=0` switches the limit off if you host it on something faster).
 
 **What judges get.** Everything in the app, including the four cities, the recorded MG Road traffic (labelled RECORDED) and, if you
 added the key, live TomTom traffic. The map cache and any state are lost when Render restarts the service; the bundled maps are copied
