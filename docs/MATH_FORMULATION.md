@@ -264,7 +264,7 @@ All of them optimize the same C through the same decoder, so their scores are li
 
 ## 5. Classical local search
 
-### 5.1 2-opt inside a route, and the older polish (`local_search.py`)
+### 5.1 The polish: 2-opt inside a route, and moves between vans (`local_search.py`)
 
 2-opt reverses a segment of a route when that shortens it. With asymmetric t a reversal also changes the direction of every
 leg inside the segment, so the textbook delta is wrong (it accepted "improvements" that lengthened the tour, Finding 8). The
@@ -297,7 +297,7 @@ SWAP*   exchange x of A and y of B, but each is re-inserted at ITS best position
         other stop was (Vidal 2022); contains "swap" as a special case
 ```
 
-2-opt* is due to Potvin and Rousseau (1995). Relocation and swap are the classical moves; the two new ones together are worth
+2-opt* is due to Potvin and Rousseau (1995). Relocation and swap are the classical moves; the last two together are worth
 several percent (BENCHMARKS.md, Finding 13). For speed a stop is only paired with its **12 nearest stops** (by t(x,z) + t(z,x)),
 and after a change only the stops of the routes it touched are examined again. The search holds exactly m route slots, so a van
 can be emptied and an unused van used; the objective is the same C as everywhere else.
@@ -324,7 +324,7 @@ The comparisons in BENCHMARKS.md follow one method (`benchmark.py` and the scrip
 - **Same problem, same decoder, same cost C** for every algorithm; several random instances per size, compared **pairwise** per
   instance.
 - **Raw vs polished.** "Raw" is what an algorithm found on its own; "+ polish" adds the local search of 5.1. Raw is the
-  like-for-like comparison of the algorithms; polished is what a production engine would deliver.
+  like-for-like comparison of the algorithms; polished is what the app returns.
 - **Significance:** the exact one-sided sign test. With W wins and L losses (ties dropped) the p-value is
   P(at least W wins in W + L fair coin flips) = sum_{k=W}^{W+L} C(W+L,k) / 2^(W+L). It ignores the size of a win, which keeps it
   conservative.
