@@ -1,8 +1,9 @@
 """
-Rehearse the demo (docs/DEMO_SCRIPT.md) through the API, and check that everything it needs is there.
+End-to-end check of the demo scenes, run through the API against a running server (local uvicorn, the Docker container or a
+public site).
 
-Run it before every demo, against the server you will present from (local uvicorn or the Docker container). It walks the
-same scenes as the script, with fixed seeds, prints what each scene should show (so you know what "normal" looks like),
+It plans a delivery route, runs the benchmark, switches between free-flow, rush-hour and recorded traffic, changes the cost
+weights, closes a road, finds a shortest path and checks time windows, all with fixed seeds. It prints what each scene shows
 and exits with 1 if a check fails. Nothing here spends the live-traffic quota unless you pass --live.
 
     python scripts/demo_rehearsal.py                                 # against http://127.0.0.1:8000

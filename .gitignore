@@ -36,3 +36,6 @@ backend/data/cvrplib/
 
 # TypeScript build artifact
 *.tsbuildinfo
+
+# Private working notes (not part of the submission)
+notes/

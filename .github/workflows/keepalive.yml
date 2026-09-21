@@ -1,5 +1,5 @@
 # Render's free web services go to sleep after 15 minutes without a visit and take about a minute to wake. This job visits the site
-# every 10 minutes so a judge never meets the sleeping version. Change the address by setting the repository variable SITE_URL
+# every 10 minutes so a visitor never meets the sleeping version. Change the address by setting the repository variable SITE_URL
 # (GitHub: Settings -> Secrets and variables -> Actions -> Variables) if Render gave the service a different name.
 # One free service awake all month is 744 of Render's 750 free hours, so keep it the only free service in the workspace.
 name: keep the demo awake

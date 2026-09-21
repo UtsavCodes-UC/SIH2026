@@ -27,7 +27,7 @@ Everything the problem statement's delivery table asks for is in this repository
 | **2. Mathematical formulation** | Objective, capacity, time-window and flow constraints, decision variables, and every algorithm, written out. | [docs/MATH_FORMULATION.md](docs/MATH_FORMULATION.md) |
 | **3. Quantum-inspired algorithm module** | QPSO with random-key route encoding, a sampled (velocity-free) update around an attractor, and an annealed contraction-expansion step. Plus a warm start and a polish. | `backend/app/core/qpso.py`, `vrp_formulation.py` |
 | **4. Software platform** | A React map interface and a FastAPI REST API. Input a network and traffic, get optimized routes drawn on the map. | `frontend/`, `backend/app/api/` |
-| **5. Demonstration** | Four real Indian cities (Delhi, Noida, Bengaluru, Mumbai), recorded and live TomTom traffic, a public site and a scripted demo. | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) |
+| **5. Demonstration** | Four real Indian cities (Delhi, Noida, Bengaluru, Mumbai), recorded and live TomTom traffic, a public site, and an end-to-end check that runs the demo scenes through the API. | [live site](https://quantum-inspired-route-optimizer.onrender.com), `backend/scripts/demo_rehearsal.py` |
 
 The "expected solution" also asks for constraint handling, convergence analysis and systematic benchmarking:
 capacity, time windows and closed roads are enforced and unreachable stops are reported; every run draws its convergence curve;
@@ -86,9 +86,7 @@ Live traffic is optional: put `TOMTOM_API_KEY=...` in `backend/.env`. Without it
 |---|---|
 | [docs/MATH_FORMULATION.md](docs/MATH_FORMULATION.md) | the problem, the cost function, each algorithm |
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | every experiment, its numbers and its caveats |
-| [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | the scripted demo, with what to say and what to expect |
-| [docs/REFERENCE.md](docs/REFERENCE.md) | using each control, live-traffic setup, REST API, Docker details, repository layout |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | putting it online for free |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | using each control, live-traffic setup, REST API, Docker and hosting, repository layout |
 
 ## Project layout
 
